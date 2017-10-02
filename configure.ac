@@ -1,16 +1,17 @@
 AC_PREREQ([2.69])
 AC_INIT(hwvar, 1.0, hannes.weisbach@riken.jp)
+
+AC_CANONICAL_TARGET
+
 AM_INIT_AUTOMAKE([foreign])
 
 AC_CONFIG_MACRO_DIRS([m4])
-
-AC_CANONICAL_HOST
 
 build_linux=no
 build_macos=no
 
 # Detect the target system
-case "${host_os}" in
+case "${target_os}" in
     linux*)
         build_linux=yes
         ;;
@@ -18,7 +19,7 @@ case "${host_os}" in
         build_macos=yes
         ;;
     *)
-        AC_MSG_ERROR(["OS $host_os is not supported"])
+        AC_MSG_ERROR(["OS $target_os is not supported"])
         ;;
 esac
 
