@@ -3,5 +3,5 @@
 
 #include <platform.h>
 
-int get_number_cpus() { return sysconf(_SC_NPROCESSORS_ONLN); }
-int get_current_cpu() { return sched_getcpu(); }
+int platform_get_number_cpus() { return sysconf(_SC_NPROCESSORS_ONLN); }
+int platform_get_current_cpu() { return sched_getcpu(); }

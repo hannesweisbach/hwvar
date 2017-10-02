@@ -1,4 +1,4 @@
 #pragma once
 
-int get_number_cpus(void);
-int get_current_cpu(void);
+int platform_get_number_cpus(void);
+int platform_get_current_cpu(void);

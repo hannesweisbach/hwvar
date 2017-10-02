@@ -88,8 +88,8 @@ int main() {
   printf("%ld\n", sizeof(pthread_mutex_t));
   printf("%ld\n", sizeof(pthread_cond_t));
 
-  printf("CPU %d\n", get_number_cpus());
-  printf("CPU %d\n", get_current_cpu());
+  printf("CPU %d\n", platform_get_number_cpus());
+  printf("CPU %d\n", platform_get_current_cpu());
 
   thread_info_t *workers = spawn_workers(2);
   stop_workers(workers, 2);

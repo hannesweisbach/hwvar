@@ -81,7 +81,7 @@ void *worker(void *arg_) {
   struct arg *arg = (struct arg *)arg_;
   arg->run = 1;
 
-  int cpu = get_current_cpu();
+  int cpu = platform_get_current_cpu();
   pthread_mutex_lock(&arg->lock);
   int target_cpu = arg->cpu;
   int dirigent = arg->dirigent;

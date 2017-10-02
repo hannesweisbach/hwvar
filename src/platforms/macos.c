@@ -10,5 +10,5 @@ static int get_sysctl_key(const char *const name) {
   return ret ? ret : count;
 }
 
-int get_number_cpus() { return get_sysctl_key("hw.logicalcpu"); }
-int get_current_cpu() { return get_sysctl_key("hw.activecpu"); }
+int platform_get_number_cpus() { return get_sysctl_key("hw.logicalcpu"); }
+int platform_get_current_cpu() { return get_sysctl_key("hw.activecpu"); }
