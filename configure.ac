@@ -52,11 +52,16 @@ AC_HEADER_ASSERT
 AC_CHECK_HEADER([stdlib.h], [], [AC_MSG_ERROR([stdlib.h not found.])])
 AC_CHECK_HEADER([errno.h], [], [AC_MSG_ERROR([errno.h not found.])])
 AC_CHECK_HEADER([pthread.h], [], [AC_MSG_ERROR([pthread.h not found.])])
+AC_CHECK_HEADER([hwloc.h], [], [AC_MSG_ERROR([hwloc.h not found.])])
 AC_CHECK_HEADERS([sched.h])
 
 AC_CHECK_TYPES([pthread_barrier_t], [], [], [[#include <pthread.h>]])
 
 AC_CHECK_FUNCS([sched_setaffinity])
+AC_SEARCH_LIBS([hwloc_topology_init], [hwloc], [], [
+  AC_MSG_ERROR([unable to find the hwloc_topology_init() function])
+])
+
 
 #AC_C_RESTRICT
 AX_CHECK_COMPILE_FLAG([-std=c11], [CFLAGS="$CFLAGS -std=c11"])
