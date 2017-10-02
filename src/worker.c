@@ -7,6 +7,7 @@
 #endif
 
 #include <worker.h>
+#include <arch.h>
 #include <platform.h>
 
 step_t *init_step(const int threads) {
@@ -106,9 +107,10 @@ void *worker(void *arg_) {
     assert(pthread_barrier_wait(work->barrier) >= 0);
 
     for (int rep = 0; rep < work->reps; ++rep) {
-      // perf ctrs
+      const uint64_t start = arch_timestamp_begin();
       work->func(work->arg);
-      // perf ctrs
+      const uint64_t end = arch_timestamp_end();
+      printf("%d %lld\n", cpu, end - start);
     }
     // report results
 
