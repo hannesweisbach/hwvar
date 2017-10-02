@@ -143,6 +143,9 @@ void run_work_rr(step_t *step, thread_info_t *threads, uint64_t cpuset) {
       continue;
     struct arg *arg = &threads[cpu].thread_arg;
     queue_work(arg, &step->work[cpu]);
+    if (cpu == 0) { // run dirigent
+      worker(arg);
+    }
     wait_until_done(arg);
   }
 }
@@ -154,6 +157,9 @@ void run_work_concurrent(step_t *step, thread_info_t *threads,
       continue;
     queue_work(&threads[cpu].thread_arg, &step->work[cpu]);
   }
+
+  // run dirigent
+  worker(&threads[0].thread_arg);
 
   for (int cpu = 0; cpu < 64; ++cpu) {
     if (!(cpuset & (1ULL << cpu)))

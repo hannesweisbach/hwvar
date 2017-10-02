@@ -26,12 +26,14 @@ static thread_info_t *spawn_workers(const int cpus) {
     thread->thread_arg.cpu = cpu;
     pthread_mutex_unlock(&thread->thread_arg.lock);
 
-    int err =
-        pthread_create(&thread->thread, NULL, worker, &thread->thread_arg);
-    if (err) {
-      fprintf(stderr, "Error creating thread.\n");
-      // can't cancel threads; just quit.
-      return NULL;
+    if (cpu > 0) {
+      int err =
+          pthread_create(&thread->thread, NULL, worker, &thread->thread_arg);
+      if (err) {
+        fprintf(stderr, "Error creating thread.\n");
+        // can't cancel threads; just quit.
+        return NULL;
+      }
     }
   }
 
@@ -75,7 +77,7 @@ static void stop_workers(thread_info_t *threads, int cpus) {
   step_t *step = init_step(1);
 
   int err = 0;
-  for (int cpu = 0; cpu < cpus; ++cpu) {
+  for (int cpu = 1; cpu < cpus; ++cpu) {
     err |= stop_single_worker(&threads[cpu], step);
     printf("CPU %d stopped\n", cpu);
   }
