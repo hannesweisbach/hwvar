@@ -33,6 +33,7 @@ void queue_work(struct arg *arg, work_t *work) {
   assert(arg->work == NULL);
   assert(arg->s == IDLE);
   arg->work = work;
+  arg->s = QUEUED;
   pthread_cond_signal(&arg->cv);
   pthread_mutex_unlock(&arg->lock);
 }
@@ -52,8 +53,8 @@ work_t * wait_until_done(struct arg *arg) {
 
 static work_t *wait_for_work(struct arg *arg) {
   pthread_mutex_lock(&arg->lock);
-  assert(arg->s == IDLE);
-  while (arg->work == NULL) {
+  assert(arg->s != WORKING);
+  while (arg->s != QUEUED) {
     pthread_cond_wait(&arg->cv, &arg->lock);
   }
   work_t *work = arg->work;

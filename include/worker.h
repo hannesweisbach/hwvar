@@ -14,7 +14,7 @@ typedef struct work {
   int padding__;
 } work_t;
 
-enum state { IDLE, WORKING, DONE };
+enum state { IDLE, QUEUED, WORKING, DONE };
 
 struct arg {
   pthread_mutex_t lock;
