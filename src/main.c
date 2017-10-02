@@ -4,6 +4,8 @@
 #include <platform.h>
 #include <worker.h>
 
+#include "dgemm.h"
+
 static thread_info_t *spawn_workers(const int cpus) {
   thread_info_t *threads =
       (thread_info_t *)malloc(sizeof(thread_info_t) * (const unsigned)cpus);
@@ -86,6 +88,22 @@ static void stop_workers(thread_info_t *threads, int cpus) {
   }
 }
 
+static void run_in_parallel(thread_info_t *workers, benchmark_ops_t *ops,
+                            int cpus) {
+  void *arg_vector = ops->init_args(cpus);
+  step_t *step = init_step(cpus);
+
+  for (int i = 0; i < cpus; ++i) {
+    work_t *work = &step->work[i];
+    work->func = ops->call;
+    work->arg = ops->get_arg(arg_vector, i);
+    work->barrier = &step->barrier;
+    work->reps = 1;
+  }
+
+  run_work_concurrent(step, workers, 0x3);
+}
+
 int main() {
   printf("%ld\n", sizeof(pthread_mutex_t));
   printf("%ld\n", sizeof(pthread_cond_t));
@@ -94,5 +112,8 @@ int main() {
   printf("CPU %d\n", platform_get_current_cpu());
 
   thread_info_t *workers = spawn_workers(2);
+
+  run_in_parallel(workers, &dgemm_ops, 2);
+
   stop_workers(workers, 2);
 }

@@ -66,5 +66,6 @@ AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_FILES([Makefile
                  src/Makefile
                  src/arch/Makefile
+                 src/benchmarks/Makefile
                  src/platforms/Makefile])
 AC_OUTPUT

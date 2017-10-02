@@ -89,13 +89,13 @@ void *worker(void *arg_) {
   int dirigent = arg->dirigent;
   pthread_mutex_unlock(&arg->lock);
 
-  if (target_cpu != arg->cpu) {
+  if (target_cpu != cpu) {
 #ifdef HAVE_SCHED_SETAFFINITY
     // do it always?
     // report back the cpu number instead?
     cpu_set_t set;
     CPU_ZERO(&set);
-    CPU_SET(arg->cpu, &set);
+    CPU_SET(target_cpu, &set);
     int err = sched_setaffinity(0, sizeof(set), &set);
 #else
     fprintf(stderr, "Expected CPU %d but running on CPU %d\n", arg->cpu, cpu);
