@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -77,41 +78,36 @@ typedef struct {
   int repeats;
 } dgemm_thread_args_t;
 
-static void *init_arguments(int threads) {
-  dgemm_thread_args_t *args = (dgemm_thread_args_t *)malloc(
-      sizeof(dgemm_thread_args_t) * (unsigned)threads);
+static void *init_argument(void *arg_) {
+  assert(arg_ == NULL);
+  dgemm_thread_args_t *arg =
+      (dgemm_thread_args_t *)malloc(sizeof(dgemm_thread_args_t));
 
-  for (int i = 0; i < threads; ++i) {
-    dgemm_thread_args_t *arg = &args[i];
-    arg->N = 128;
-    arg->repeats = 100;//8192;
-    arg->alpha = 1.0;
-    arg->beta = 1.0;
-    const unsigned N = (unsigned)arg->N;
-    arg->matrixA = (double *)malloc(sizeof(double) * N * N);
-    arg->matrixB = (double *)malloc(sizeof(double) * N * N);
-    arg->matrixC = (double *)malloc(sizeof(double) * N * N);
-    for (unsigned j = 0; j < N; j++) {
-      for (unsigned k = 0; k < N; k++) {
-        arg->matrixA[j * N + k] = 2.0;
-        arg->matrixB[j * N + k] = 0.5;
-        arg->matrixC[j * N + k] = 1.0;
-      }
+  arg->N = 128;
+  arg->repeats = 81; // 92;
+  arg->alpha = 1.0;
+  arg->beta = 1.0;
+  const unsigned N = (unsigned)arg->N;
+  arg->matrixA = (double *)malloc(sizeof(double) * N * N);
+  arg->matrixB = (double *)malloc(sizeof(double) * N * N);
+  arg->matrixC = (double *)malloc(sizeof(double) * N * N);
+  for (unsigned j = 0; j < N; j++) {
+    for (unsigned k = 0; k < N; k++) {
+      arg->matrixA[j * N + k] = 2.0;
+      arg->matrixB[j * N + k] = 0.5;
+      arg->matrixC[j * N + k] = 1.0;
     }
   }
 
-  return args;
+  return arg;
 }
 
-static void destroy_arguments(void *args_, int threads) {
-  dgemm_thread_args_t *args = (dgemm_thread_args_t *)args_;
+static void destroy_argument(void *arg_) {
+  dgemm_thread_args_t *arg = (dgemm_thread_args_t *)arg_;
 
-  for (int i = 0; i < threads; ++i) {
-    dgemm_thread_args_t *arg = &args[i];
-    free(arg->matrixA);
-    free(arg->matrixB);
-    free(arg->matrixC);
-  }
+  free(arg->matrixA);
+  free(arg->matrixB);
+  free(arg->matrixC);
 }
 
 static void *get_argument(void *args_, int idx) {
@@ -126,8 +122,8 @@ static void *call_work(void *arg_) {
   return NULL;
 }
 
-benchmark_ops_t dgemm_ops = {.init_args = init_arguments,
-                             .free_args = destroy_arguments,
+benchmark_ops_t dgemm_ops = {.init_arg = init_argument,
+                             .free_arg = destroy_argument,
                              .get_arg = get_argument,
                              .call = call_work};
 

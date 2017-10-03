@@ -76,6 +76,13 @@ static void return_finished_work(struct arg *arg, work_t *work) {
   pthread_mutex_unlock(&arg->lock);
 }
 
+static uint64_t get_time() {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+
+  return ts.tv_sec * 1000 * 1000 * 1000 + ts.tv_nsec;
+}
+
 void *worker(void *arg_) {
   // get & check cpu no
   // potentially set_affinity / report back cpu no?
@@ -83,34 +90,30 @@ void *worker(void *arg_) {
   struct arg *arg = (struct arg *)arg_;
   arg->run = 1;
 
-  int cpu = platform_get_current_cpu();
   pthread_mutex_lock(&arg->lock);
-  int target_cpu = arg->cpu;
   int dirigent = arg->dirigent;
+  fprintf(stderr, "Setting CPU for thread %s (%d)\n", arg->cpuset_string, arg->cpu);
+  hwloc_set_cpubind(arg->topology, arg->cpuset, HWLOC_CPUBIND_THREAD);
   pthread_mutex_unlock(&arg->lock);
-
-  if (target_cpu != cpu) {
-#ifdef HAVE_SCHED_SETAFFINITY
-    // do it always?
-    // report back the cpu number instead?
-    cpu_set_t set;
-    CPU_ZERO(&set);
-    CPU_SET(target_cpu, &set);
-    int err = sched_setaffinity(0, sizeof(set), &set);
-#else
-    fprintf(stderr, "Expected CPU %d but running on CPU %d\n", arg->cpu, cpu);
-#endif
-  }
 
   while (arg->run) {
     work_t *work = wait_for_work(arg);
-    assert(pthread_barrier_wait(work->barrier) >= 0);
+
+    void *benchmark_arg =
+        (work->ops->init_arg) ? work->ops->init_arg(work->arg) : work->arg;
+
+    const int err = pthread_barrier_wait(work->barrier);
+    if (err && err != PTHREAD_BARRIER_SERIAL_THREAD) {
+      perror("barrier");
+    }
 
     for (int rep = 0; rep < work->reps; ++rep) {
+      const uint64_t st = get_time();
       const uint64_t start = arch_timestamp_begin();
-      work->func(work->arg);
+      work->ops->call(benchmark_arg);
       const uint64_t end = arch_timestamp_end();
-      printf("%d %lld\n", cpu, end - start);
+      const uint64_t et = get_time();
+      printf("%2d %lld %lld\n", arg->cpu, end - start, et - st);
     }
     // report results
 
@@ -121,51 +124,57 @@ void *worker(void *arg_) {
   }
 
   if (!dirigent)
-    fprintf(stdout, "Thread %d stopped.\n", arg->cpu);
+    fprintf(stderr, "Thread %s stopped.\n", arg->cpuset_string);
 
   return NULL;
 }
 
-void initialize_work(step_t *step, work_func_t func, void *arg,
-                     const uint64_t cpuset, const int reps) {
-  for (int cpu = 0; cpu < 64; ++cpu) {
-    if (!(cpuset & (1ULL << cpu)))
-      continue;
+void initialize_work(step_t *step, benchmark_ops_t *ops, void *arg,
+                     hwloc_const_cpuset_t const cpuset, const int reps) {
+  unsigned int cpu;
+  hwloc_bitmap_foreach_begin(cpu, cpuset) {
     work_t *work = &step->work[cpu];
-    work->func = func;
+    work->ops = ops;
     work->arg = arg;
     work->barrier = &step->barrier;
     work->reps = reps;
   }
+  hwloc_bitmap_foreach_end();
 }
 
-void run_work_rr(step_t *step, thread_info_t *threads, uint64_t cpuset) {
-  for (int cpu = 0; cpu < 64; ++cpu) {
-    if (!(cpuset & (1ULL << cpu)))
-      continue;
+void run_work_rr(step_t *step, thread_data_t *threads,
+                 hwloc_const_cpuset_t const cpuset) {
+  unsigned int cpu;
+  hwloc_bitmap_foreach_begin(cpu, cpuset) {
     struct arg *arg = &threads[cpu].thread_arg;
     queue_work(arg, &step->work[cpu]);
-    if (cpu == 0) { // run dirigent
+    if (arg->dirigent) { // run dirigent
       worker(arg);
     }
     wait_until_done(arg);
   }
+  hwloc_bitmap_foreach_end();
 }
 
-void run_work_concurrent(step_t *step, thread_info_t *threads,
-                         uint64_t cpuset) {
-  for (int cpu = 0; cpu < 64; ++cpu) {
-    if (!(cpuset & (1ULL << cpu)))
-      continue;
-    queue_work(&threads[cpu].thread_arg, &step->work[cpu]);
+void run_work_concurrent(step_t *step, thread_data_t *threads,
+                         hwloc_const_cpuset_t const cpuset) {
+  unsigned int i;
+  hwloc_bitmap_foreach_begin(i, cpuset) {
+    queue_work(&threads[i].thread_arg, &step->work[i]);
   }
+  hwloc_bitmap_foreach_end();
 
   // run dirigent
-  worker(&threads[0].thread_arg);
-
-  for (int cpu = 0; cpu < 64; ++cpu) {
-    if (!(cpuset & (1ULL << cpu)))
-      continue;
-    wait_until_done(&threads[cpu].thread_arg);
+  hwloc_bitmap_foreach_begin(i, cpuset) {
+    if (threads[i].thread_arg.dirigent) {
+      worker(&threads[i].thread_arg);
+      break;
+    }
   }
+  hwloc_bitmap_foreach_end();
+
+  hwloc_bitmap_foreach_begin(i, cpuset) {
+    wait_until_done(&threads[i].thread_arg);
+  }
+  hwloc_bitmap_foreach_end();
 }

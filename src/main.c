@@ -1,20 +1,41 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <hwloc.h>
+
 #include <platform.h>
 #include <worker.h>
 
 #include "dgemm.h"
 
-static thread_info_t *spawn_workers(const int cpus) {
-  thread_info_t *threads =
-      (thread_info_t *)malloc(sizeof(thread_info_t) * (const unsigned)cpus);
-  if (threads == NULL)
-    return NULL;
+static threads_t *spawn_workers(hwloc_topology_t topology) {
+  const int depth = hwloc_get_type_or_below_depth(topology, HWLOC_OBJ_CORE);
+  const unsigned num_threads = (unsigned)hwloc_get_nbobjs_by_depth(topology, depth);
 
-  int cpu = 0;
-  for (; cpu < cpus; ++cpu) {
-    thread_info_t *thread = &threads[cpu];
+  threads_t *workers = (threads_t *)malloc(sizeof(threads_t));
+  if (workers == NULL) {
+    exit(EXIT_FAILURE);
+  }
+
+  workers->threads =
+      (thread_data_t *)malloc(sizeof(thread_data_t) * num_threads);
+  if (workers->threads == NULL) {
+    exit(EXIT_FAILURE);
+  }
+
+  hwloc_cpuset_t cpuset = hwloc_bitmap_alloc();
+  for (unsigned i = 0; i < num_threads; ++i) {
+    /* TODO Awesome:
+     * If no object for that type exists, NULL is returned. If there
+     * are several levels with objects of that type, NULL is returned and ther
+     * caller may fallback to hwloc_get_obj_by_depth(). */
+    hwloc_obj_t obj = hwloc_get_obj_by_type(topology, HWLOC_OBJ_CORE, i);
+    if (obj == NULL) {
+      printf("Error getting obj. Implement fallback to "
+             "hwloc_get_obj_by_depth()?\n");
+      exit(EXIT_FAILURE);
+    }
+    thread_data_t *thread = &workers->threads[i];
     // TODO handle errors.
     pthread_mutex_init(&thread->thread_arg.lock, NULL);
     pthread_cond_init(&thread->thread_arg.cv, NULL);
@@ -23,12 +44,25 @@ static thread_info_t *spawn_workers(const int cpus) {
     thread->thread_arg.work = NULL;
     thread->thread_arg.s = IDLE;
     thread->thread_arg.run = 1;
-    thread->thread_arg.dirigent = cpu == 0;
-    thread->thread_arg.thread = cpu;
-    thread->thread_arg.cpu = cpu;
+    thread->thread_arg.dirigent = i == 0;
+    thread->thread_arg.thread = i;
+    thread->thread_arg.cpu = obj->os_index;
+    thread->thread_arg.topology = topology;
+    {
+      hwloc_cpuset_t tmp = hwloc_bitmap_dup(obj->cpuset);
+      // TODO might this get the same mask for two sets?!
+      hwloc_bitmap_singlify(tmp);
+      thread->thread_arg.cpuset = tmp;
+    }
+    hwloc_bitmap_asprintf(&thread->thread_arg.cpuset_string, cpuset);
+    fprintf(stderr, "Found L:%u P:%u %s\n", obj->logical_index, obj->os_index,
+            thread->thread_arg.cpuset_string);
+
+    hwloc_bitmap_set(cpuset, i);
     pthread_mutex_unlock(&thread->thread_arg.lock);
 
-    if (cpu > 0) {
+
+    if (i > 0) {
       int err =
           pthread_create(&thread->thread, NULL, worker, &thread->thread_arg);
       if (err) {
@@ -39,18 +73,24 @@ static thread_info_t *spawn_workers(const int cpus) {
     }
   }
 
-  return threads;
+  workers->cpuset = cpuset;
+
+  return workers;
 }
+
+#include <benchmark.h>
 
 static void *stop_thread(void *arg_) {
   struct arg *arg = (struct arg *)arg_;
   arg->run = 0;
-  fprintf(stdout, "Thread %d ist stopping.\n", arg->cpu);
   return NULL;
 }
 
-static int stop_single_worker(thread_info_t *thread, step_t *step) {
-  step->work->func = stop_thread;
+static int stop_single_worker(thread_data_t *thread, step_t *step) {
+  benchmark_ops_t stop_ops = {
+      .init_arg = NULL, .free_arg = NULL, .get_arg = NULL, .call = stop_thread};
+
+  step->work->ops = &stop_ops;
   step->work->arg = &thread->thread_arg;
   step->work->barrier = &step->barrier;
   step->work->reps = 1;
@@ -60,8 +100,8 @@ static int stop_single_worker(thread_info_t *thread, step_t *step) {
 
   int err = pthread_join(thread->thread, NULL);
   if (err) {
-    fprintf(stderr, "Error joining with thread on CPU %d\n",
-            thread->thread_arg.cpu);
+    fprintf(stderr, "Error joining with thread %d\n",
+            thread->thread_arg.thread);
     return err;
   }
 
@@ -69,51 +109,62 @@ static int stop_single_worker(thread_info_t *thread, step_t *step) {
   pthread_cond_destroy(&thread->thread_arg.cv);
   if (err) {
     fprintf(stderr, "Error destroying queue for thread on CPU %d\n",
-            thread->thread_arg.cpu);
+            thread->thread_arg.thread);
   }
 
   return err;
 }
 
-static void stop_workers(thread_info_t *threads, int cpus) {
+static void stop_workers(threads_t *workers) {
   step_t *step = init_step(1);
 
+  unsigned int i;
   int err = 0;
-  for (int cpu = 1; cpu < cpus; ++cpu) {
-    err |= stop_single_worker(&threads[cpu], step);
-    printf("CPU %d stopped\n", cpu);
+  hwloc_bitmap_foreach_begin(i, workers->cpuset) {
+    if (workers->threads[i].thread_arg.dirigent) { // skip dirigent
+      continue;
+    }
+    err |= stop_single_worker(&workers->threads[i], step);
   }
+  hwloc_bitmap_foreach_end();
+
   if (!err) {
-    free(threads);
+    // TODO cleanup.
   }
 }
 
-static void run_in_parallel(thread_info_t *workers, benchmark_ops_t *ops,
-                            int cpus) {
-  void *arg_vector = ops->init_args(cpus);
+static void run_in_parallel(threads_t *workers, benchmark_ops_t *ops) {
+  int cpus = hwloc_bitmap_weight(workers->cpuset);
+  //void *arg_vector = ops->init_args(cpus);
   step_t *step = init_step(cpus);
 
-  for (int i = 0; i < cpus; ++i) {
+  unsigned int i;
+  hwloc_bitmap_foreach_begin(i, workers->cpuset) {
     work_t *work = &step->work[i];
-    work->func = ops->call;
-    work->arg = ops->get_arg(arg_vector, i);
+    work->ops = ops;
+    work->arg = NULL;
     work->barrier = &step->barrier;
-    work->reps = 1;
+    work->reps = 10;
   }
-
-  run_work_concurrent(step, workers, 0x3);
+  hwloc_bitmap_foreach_end();
+  run_work_concurrent(step, workers->threads, workers->cpuset);
 }
 
 int main() {
-  printf("%ld\n", sizeof(pthread_mutex_t));
-  printf("%ld\n", sizeof(pthread_cond_t));
+  hwloc_topology_t topology;
+  hwloc_topology_init(&topology);
+  hwloc_topology_load(topology);
 
-  printf("CPU %d\n", platform_get_number_cpus());
-  printf("CPU %d\n", platform_get_current_cpu());
+  hwloc_const_cpuset_t orig = hwloc_topology_get_complete_cpuset(topology);
+  if (hwloc_bitmap_weight(orig) == 48) {
+    hwloc_cpuset_t restricted = hwloc_bitmap_dup(orig);
+    hwloc_bitmap_clr(restricted, 0);
+    hwloc_topology_restrict(topology, restricted, 0);
+  }
 
-  thread_info_t *workers = spawn_workers(2);
+  threads_t *workers = spawn_workers(topology);
 
-  run_in_parallel(workers, &dgemm_ops, 2);
+  run_in_parallel(workers, &dgemm_ops);
 
-  stop_workers(workers, 2);
+  stop_workers(workers);
 }
