@@ -20,4 +20,5 @@ Makefile.in
 .dirstamp
 .libs/
 *.l[ao]
+/build*
 *~
