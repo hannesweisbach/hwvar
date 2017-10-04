@@ -179,9 +179,25 @@ static benchmark_result_t run_in_parallel(threads_t *workers,
     work->barrier = &step->barrier;
     work->result = &result.data[i * repetitions];
     work->reps = repetitions;
+
+    struct arg *arg = &workers->threads[i].thread_arg;
+    queue_work(arg, work);
   }
   hwloc_bitmap_foreach_end();
-  run_work_concurrent(step, workers->threads, workers->cpuset);
+
+  // run dirigent
+  hwloc_bitmap_foreach_begin(i, workers->cpuset) {
+    if (workers->threads[i].thread_arg.dirigent) {
+      worker(&workers->threads[i].thread_arg);
+      break;
+    }
+  }
+  hwloc_bitmap_foreach_end();
+
+  hwloc_bitmap_foreach_begin(i, workers->cpuset) {
+    wait_until_done(&workers->threads[i].thread_arg);
+  }
+  hwloc_bitmap_foreach_end();
 
   return result;
 }

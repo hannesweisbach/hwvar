@@ -142,25 +142,3 @@ void initialize_work(step_t *step, benchmark_ops_t *ops, void *arg,
   hwloc_bitmap_foreach_end();
 }
 
-void run_work_concurrent(step_t *step, thread_data_t *threads,
-                         hwloc_const_cpuset_t const cpuset) {
-  unsigned int i;
-  hwloc_bitmap_foreach_begin(i, cpuset) {
-    queue_work(&threads[i].thread_arg, &step->work[i]);
-  }
-  hwloc_bitmap_foreach_end();
-
-  // run dirigent
-  hwloc_bitmap_foreach_begin(i, cpuset) {
-    if (threads[i].thread_arg.dirigent) {
-      worker(&threads[i].thread_arg);
-      break;
-    }
-  }
-  hwloc_bitmap_foreach_end();
-
-  hwloc_bitmap_foreach_begin(i, cpuset) {
-    wait_until_done(&threads[i].thread_arg);
-  }
-  hwloc_bitmap_foreach_end();
-}
