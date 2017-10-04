@@ -23,6 +23,11 @@ static threads_t *spawn_workers(hwloc_topology_t topology) {
     exit(EXIT_FAILURE);
   }
 
+  workers->logical_to_os = (unsigned *)malloc(sizeof(unsigned) * num_threads);
+  if (workers->logical_to_os == NULL) {
+    exit(EXIT_FAILURE);
+  }
+
   hwloc_cpuset_t cpuset = hwloc_bitmap_alloc();
   for (unsigned i = 0; i < num_threads; ++i) {
     /* TODO Awesome:
@@ -61,6 +66,7 @@ static threads_t *spawn_workers(hwloc_topology_t topology) {
     hwloc_bitmap_set(cpuset, i);
     pthread_mutex_unlock(&thread->thread_arg.lock);
 
+    workers->logical_to_os[obj->logical_index] = obj->os_index;
 
     if (i > 0) {
       int err =
