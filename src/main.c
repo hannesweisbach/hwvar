@@ -100,6 +100,7 @@ static int stop_single_worker(thread_data_t *thread, step_t *step) {
   step->work->arg = &thread->thread_arg;
   step->work->barrier = &step->barrier;
   step->work->reps = 1;
+  step->work->result = NULL;
 
   queue_work(&thread->thread_arg, step->work);
   wait_until_done(&thread->thread_arg);
