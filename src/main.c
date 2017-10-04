@@ -232,8 +232,14 @@ run_one_by_one(threads_t *workers, benchmark_ops_t *ops, unsigned repetitions) {
 
 int main() {
   hwloc_topology_t topology;
-  hwloc_topology_init(&topology);
-  hwloc_topology_load(topology);
+  if (hwloc_topology_init(&topology)) {
+    printf("hwloc_topology_init failed\n");
+    exit(EXIT_FAILURE);
+  }
+  if (hwloc_topology_load(topology)) {
+    printf("hwloc_topology_load() failed\n");
+    exit(EXIT_FAILURE);
+  }
 
   hwloc_const_cpuset_t orig = hwloc_topology_get_complete_cpuset(topology);
   if (hwloc_bitmap_weight(orig) == 48) {
