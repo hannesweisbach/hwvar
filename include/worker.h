@@ -60,8 +60,6 @@ work_t * wait_until_done(struct arg *arg);
 
 void initialize_work(step_t *step, benchmark_ops_t *ops, void *arg,
                      hwloc_const_cpuset_t const cpuset, const int reps);
-void run_work_rr(step_t *step, thread_data_t *threads,
-                 hwloc_const_cpuset_t const cpuset);
 void run_work_concurrent(step_t *step, thread_data_t *threads,
                          hwloc_const_cpuset_t const cpuset);
 

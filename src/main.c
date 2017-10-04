@@ -186,6 +186,34 @@ static benchmark_result_t run_in_parallel(threads_t *workers,
   return result;
 }
 
+static benchmark_result_t
+run_one_by_one(threads_t *workers, benchmark_ops_t *ops, unsigned repetitions) {
+
+  int cpus = hwloc_bitmap_weight(workers->cpuset);
+  benchmark_result_t result = result_alloc(cpus, repetitions);
+  step_t *step = init_step(1);
+
+  unsigned int i;
+  hwloc_bitmap_foreach_begin(i, workers->cpuset) {
+    work_t *work = &step->work[i];
+    work->ops = ops;
+    work->arg = NULL;
+    work->barrier = &step->barrier;
+    work->result = &result.data[i * repetitions];
+    work->reps = repetitions;
+
+    struct arg *arg = &workers->threads[i].thread_arg;
+    queue_work(arg, work);
+    if (arg->dirigent) { // run dirigent
+      worker(arg);
+    }
+    wait_until_done(arg);
+  }
+  hwloc_bitmap_foreach_end();
+
+  return result;
+}
+
 int main() {
   hwloc_topology_t topology;
   hwloc_topology_init(&topology);
