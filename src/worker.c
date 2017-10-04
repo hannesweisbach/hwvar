@@ -111,6 +111,9 @@ void *worker(void *arg_) {
       perror("barrier");
     }
 
+    // warm-up
+    work->ops->call(benchmark_arg);
+
     for (unsigned rep = 0; rep < work->reps; ++rep) {
       // const uint64_t st = get_time();
       const uint64_t start = arch_timestamp_begin();
