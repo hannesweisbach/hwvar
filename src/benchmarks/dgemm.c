@@ -108,6 +108,7 @@ static void destroy_argument(void *arg_) {
   free(arg->matrixA);
   free(arg->matrixB);
   free(arg->matrixC);
+  free(arg);
 }
 
 static void *get_argument(void *args_, int idx) {
