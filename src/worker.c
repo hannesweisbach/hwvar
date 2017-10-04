@@ -107,15 +107,15 @@ void *worker(void *arg_) {
       perror("barrier");
     }
 
-    for (int rep = 0; rep < work->reps; ++rep) {
-      const uint64_t st = get_time();
+    for (unsigned rep = 0; rep < work->reps; ++rep) {
+      // const uint64_t st = get_time();
       const uint64_t start = arch_timestamp_begin();
       work->ops->call(benchmark_arg);
       const uint64_t end = arch_timestamp_end();
-      const uint64_t et = get_time();
-      printf("%2d %lld %lld\n", arg->cpu, end - start, et - st);
+      // const uint64_t et = get_time();
+      if (work->result)
+        work->result[rep] = end - start;
     }
-    // report results
 
     return_finished_work(arg, work);
 

@@ -139,9 +139,36 @@ static void stop_workers(threads_t *workers) {
   }
 }
 
-static void run_in_parallel(threads_t *workers, benchmark_ops_t *ops) {
+typedef struct {
+  uint64_t *data;
+  unsigned threads;
+  unsigned repetitions;
+} benchmark_result_t;
+
+static benchmark_result_t result_alloc(unsigned threads, unsigned repetitions) {
+  benchmark_result_t result = {
+      .data = NULL, .threads = threads, .repetitions = repetitions};
+
+  result.data = (uint64_t *)malloc(sizeof(uint64_t) * threads * repetitions);
+
+  return result;
+}
+
+static void result_print(threads_t *threads, benchmark_result_t result) {
+  for (unsigned thread = 0; thread < result.threads; ++thread) {
+    fprintf(stdout, "%2d ", threads->logical_to_os[thread]);
+    for (unsigned rep = 0; rep < result.repetitions; ++rep) {
+      fprintf(stdout, "%10d ", result.data[thread * result.repetitions + rep]);
+    }
+    fprintf(stdout, "\n");
+  }
+}
+
+static benchmark_result_t run_in_parallel(threads_t *workers,
+                                          benchmark_ops_t *ops,
+                                          unsigned repetitions) {
   int cpus = hwloc_bitmap_weight(workers->cpuset);
-  //void *arg_vector = ops->init_args(cpus);
+  benchmark_result_t result = result_alloc(cpus, repetitions);
   step_t *step = init_step(cpus);
 
   unsigned int i;
@@ -150,10 +177,13 @@ static void run_in_parallel(threads_t *workers, benchmark_ops_t *ops) {
     work->ops = ops;
     work->arg = NULL;
     work->barrier = &step->barrier;
-    work->reps = 10;
+    work->result = &result.data[i * repetitions];
+    work->reps = repetitions;
   }
   hwloc_bitmap_foreach_end();
   run_work_concurrent(step, workers->threads, workers->cpuset);
+
+  return result;
 }
 
 int main() {
@@ -170,7 +200,9 @@ int main() {
 
   threads_t *workers = spawn_workers(topology);
 
-  run_in_parallel(workers, &dgemm_ops);
+  benchmark_result_t result = run_in_parallel(workers, &dgemm_ops, 10);
+
+  result_print(workers, result);
 
   stop_workers(workers);
 }

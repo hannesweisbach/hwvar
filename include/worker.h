@@ -11,7 +11,8 @@ typedef struct work {
   pthread_barrier_t *barrier;
   benchmark_ops_t *ops;
   void *arg;
-  int reps;
+  uint64_t *result;
+  unsigned reps;
   int padding__;
 } work_t;
 
