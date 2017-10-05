@@ -58,6 +58,3 @@ step_t *init_step(const int threads);
 void queue_work(struct arg *arg, work_t *work);
 work_t * wait_until_done(struct arg *arg);
 
-void initialize_work(step_t *step, benchmark_ops_t *ops, void *arg,
-                     hwloc_const_cpuset_t const cpuset, const int reps);
-

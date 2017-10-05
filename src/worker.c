@@ -136,16 +136,3 @@ void *worker(void *arg_) {
   return NULL;
 }
 
-void initialize_work(step_t *step, benchmark_ops_t *ops, void *arg,
-                     hwloc_const_cpuset_t const cpuset, const int reps) {
-  unsigned int cpu;
-  hwloc_bitmap_foreach_begin(cpu, cpuset) {
-    work_t *work = &step->work[cpu];
-    work->ops = ops;
-    work->arg = arg;
-    work->barrier = &step->barrier;
-    work->reps = reps;
-  }
-  hwloc_bitmap_foreach_end();
-}
-
