@@ -9,7 +9,7 @@
 
 typedef struct work {
   pthread_barrier_t *barrier;
-  benchmark_ops_t *ops;
+  benchmark_t *ops;
   void *arg;
   uint64_t *result;
   unsigned reps;

@@ -123,10 +123,13 @@ static void *call_work(void *arg_) {
   return NULL;
 }
 
-benchmark_ops_t dgemm_ops = {.init_arg = init_argument,
-                             .free_arg = destroy_argument,
-                             .get_arg = get_argument,
-                             .call = call_work};
+benchmark_t dgemm_ops = {.name = "dgemm",
+                         .init = NULL,
+                         .init_arg = init_argument,
+                         .free_arg = destroy_argument,
+                         .get_arg = get_argument,
+                         .call = call_work,
+                         .state = NULL};
 
 #if 0
 double init_and_do_dgemm(

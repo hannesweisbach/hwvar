@@ -5,6 +5,7 @@
 
 #include <platform.h>
 #include <worker.h>
+#include "benchmark.h"
 
 #include "dgemm.h"
 
@@ -93,8 +94,7 @@ static void *stop_thread(void *arg_) {
 }
 
 static int stop_single_worker(thread_data_t *thread, step_t *step) {
-  benchmark_ops_t stop_ops = {
-      .init_arg = NULL, .free_arg = NULL, .get_arg = NULL, .call = stop_thread};
+  benchmark_t stop_ops = {"stop", NULL, NULL, NULL, NULL, stop_thread, NULL};
 
   step->work->ops = &stop_ops;
   step->work->arg = &thread->thread_arg;
@@ -165,9 +165,8 @@ static void result_print(threads_t *threads, benchmark_result_t result) {
   }
 }
 
-static benchmark_result_t run_in_parallel(threads_t *workers,
-                                          benchmark_ops_t *ops,
-                                          unsigned repetitions) {
+static benchmark_result_t run_in_parallel(threads_t *workers, benchmark_t *ops,
+                                          const unsigned repetitions) {
   int cpus = hwloc_bitmap_weight(workers->cpuset);
   benchmark_result_t result = result_alloc(cpus, repetitions);
   step_t *step = init_step(cpus);
@@ -203,8 +202,8 @@ static benchmark_result_t run_in_parallel(threads_t *workers,
   return result;
 }
 
-static benchmark_result_t
-run_one_by_one(threads_t *workers, benchmark_ops_t *ops, unsigned repetitions) {
+static benchmark_result_t run_one_by_one(threads_t *workers, benchmark_t *ops,
+                                         unsigned repetitions) {
 
   int cpus = hwloc_bitmap_weight(workers->cpuset);
   benchmark_result_t result = result_alloc(cpus, repetitions);
