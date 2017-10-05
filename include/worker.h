@@ -19,15 +19,15 @@ typedef struct work {
 enum state { IDLE, QUEUED, WORKING, DONE };
 
 struct arg {
+  hwloc_topology_t topology;
+  hwloc_const_cpuset_t cpuset;
+  char *cpuset_string;
   pthread_mutex_t lock;
   pthread_cond_t cv;
   work_t *work;
   unsigned thread;
   unsigned cpu;
   enum state s;
-  hwloc_topology_t topology;
-  hwloc_const_cpuset_t cpuset;
-  char *cpuset_string;
   short run;
   short dirigent;
 };
