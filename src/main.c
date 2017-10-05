@@ -12,12 +12,15 @@
 
 static threads_t *spawn_workers(hwloc_topology_t topology) {
   const int depth = hwloc_get_type_or_below_depth(topology, HWLOC_OBJ_CORE);
-  const unsigned num_threads = (unsigned)hwloc_get_nbobjs_by_depth(topology, depth);
+  const unsigned num_threads =
+      hwloc_get_nbobjs_by_depth(topology, (unsigned)depth);
 
   threads_t *workers = (threads_t *)malloc(sizeof(threads_t));
   if (workers == NULL) {
     exit(EXIT_FAILURE);
   }
+
+  fprintf(stderr, "Spawning %d workers\n", num_threads);
 
   workers->threads =
       (thread_data_t *)malloc(sizeof(thread_data_t) * num_threads);
@@ -147,7 +150,8 @@ typedef struct {
   unsigned repetitions;
 } benchmark_result_t;
 
-static benchmark_result_t result_alloc(unsigned threads, unsigned repetitions) {
+static benchmark_result_t result_alloc(unsigned threads,
+                                       const unsigned repetitions) {
   benchmark_result_t result = {
       .data = NULL, .threads = threads, .repetitions = repetitions};
 
@@ -160,7 +164,7 @@ static void result_print(threads_t *threads, benchmark_result_t result) {
   for (unsigned thread = 0; thread < result.threads; ++thread) {
     fprintf(stdout, "%2d ", threads->logical_to_os[thread]);
     for (unsigned rep = 0; rep < result.repetitions; ++rep) {
-      fprintf(stdout, "%10d ", result.data[thread * result.repetitions + rep]);
+      fprintf(stdout, "%10llu ", result.data[thread * result.repetitions + rep]);
     }
     fprintf(stdout, "\n");
   }
@@ -169,7 +173,7 @@ static void result_print(threads_t *threads, benchmark_result_t result) {
 static benchmark_result_t run_in_parallel(threads_t *workers, benchmark_t *ops,
                                           const unsigned repetitions) {
   int cpus = hwloc_bitmap_weight(workers->cpuset);
-  benchmark_result_t result = result_alloc(cpus, repetitions);
+  benchmark_result_t result = result_alloc((unsigned)cpus, repetitions);
   step_t *step = init_step(cpus);
 
   unsigned int i;
@@ -207,7 +211,7 @@ static benchmark_result_t run_one_by_one(threads_t *workers, benchmark_t *ops,
                                          unsigned repetitions) {
 
   int cpus = hwloc_bitmap_weight(workers->cpuset);
-  benchmark_result_t result = result_alloc(cpus, repetitions);
+  benchmark_result_t result = result_alloc((unsigned)cpus, repetitions);
   step_t *step = init_step(1);
 
   unsigned int i;

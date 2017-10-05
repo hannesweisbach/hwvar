@@ -80,7 +80,7 @@ static uint64_t get_time() {
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
 
-  return ts.tv_sec * 1000 * 1000 * 1000 + ts.tv_nsec;
+  return (uint64_t)ts.tv_sec * 1000 * 1000 * 1000 + (uint64_t)ts.tv_nsec;
 }
 
 void *worker(void *arg_) {
@@ -106,7 +106,7 @@ void *worker(void *arg_) {
     void *benchmark_arg =
         (work->ops->init_arg) ? work->ops->init_arg(work->arg) : work->arg;
 
-    const int err = pthread_barrier_wait(work->barrier);
+    err = pthread_barrier_wait(work->barrier);
     if (err && err != PTHREAD_BARRIER_SERIAL_THREAD) {
       perror("barrier");
     }
