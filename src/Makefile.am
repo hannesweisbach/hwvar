@@ -11,5 +11,5 @@ libworker_a_SOURCES = worker.c
 
 bin_PROGRAMS = hwvar
 hwvar_SOURCES = main.c
-hwvar_LDADD = libworker.a libbarrier.a benchmarks/libbm_dgemm.a arch/libarch.a platforms/libplatform.a 
+hwvar_LDADD = libworker.a libbarrier.a benchmarks/libbenchmarks.a arch/libarch.a platforms/libplatform.a
 hwvar_LDFLAGS = -pthread
