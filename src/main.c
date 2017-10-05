@@ -1,3 +1,4 @@
+#include <getopt.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -230,7 +231,7 @@ static benchmark_result_t run_one_by_one(threads_t *workers, benchmark_t *ops,
   return result;
 }
 
-int main() {
+int main(int argc, char *argv[]) {
   hwloc_topology_t topology;
   if (hwloc_topology_init(&topology)) {
     printf("hwloc_topology_init failed\n");
@@ -248,9 +249,88 @@ int main() {
     hwloc_topology_restrict(topology, restricted, 0);
   }
 
+  enum policy { PARALLEL, ONE_BY_ONE, NR_POLICIES };
+
+  enum policy policy = NR_POLICIES;
+  benchmark_t *benchmark = NULL;
+  unsigned iterations = 10;
+
+  static struct option options[] = {
+      {"policy", required_argument, NULL, 'p'},
+      {"benchmarks", required_argument, NULL, 'b'},
+      {"iterations", required_argument, NULL, 'i'},
+      {"list-benchmarks", no_argument, NULL, 'l'},
+      {NULL, 0, NULL, 0}};
+
+  opterr = 0;
+
+  while (1) {
+    int c = getopt_long(argc, argv, "p:b:i:l", options, NULL);
+    if (c == -1)
+      break;
+    errno = 0;
+    switch (c) {
+    case 'p':
+      if (strcmp(optarg, "parallel") == 0) {
+        policy = PARALLEL;
+      } else if (strcmp(optarg, "onebyone") == 0) {
+        policy = ONE_BY_ONE;
+      } else {
+        fprintf(stderr, "Unkown policy: %s\n", optarg);
+        exit(EXIT_FAILURE);
+      }
+      break;
+    case 'b':
+      benchmark = get_benchmark(optarg);
+      if (benchmark == NULL) {
+        fprintf(stderr, "Unkown benchmark: '%s'\n", optarg);
+        exit(EXIT_FAILURE);
+      }
+      break;
+    case 'i':
+      errno = 0;
+      unsigned long tmp = strtoul(optarg, NULL, 0);
+      if (errno == EINVAL || errno == ERANGE || tmp > UINT_MAX) {
+        fprintf(stderr, "Could not parse --iterations argument '%s': %s\n",
+                optarg, strerror(errno));
+      }
+      iterations = (unsigned)tmp;
+    case 'l':
+      list_benchmarks();
+      exit(EXIT_SUCCESS);
+    case ':':
+      break;
+    default:
+      break;
+    }
+  }
+
+  if (benchmark == NULL) {
+    fprintf(stderr, "No benchmark selected.\n");
+    // TODO: list benchmarks.
+    exit(EXIT_FAILURE);
+  }
+
+  if (policy >= NR_POLICIES) {
+    fprintf(stderr, "No valid policy selected.\n");
+    exit(EXIT_FAILURE);
+  }
+
+  init_benchmarks(argc, argv);
+
   threads_t *workers = spawn_workers(topology);
 
-  benchmark_result_t result = run_in_parallel(workers, &dgemm_ops, 10);
+  benchmark_result_t result;
+  switch (policy) {
+  case PARALLEL:
+    result = run_in_parallel(workers, benchmark, iterations);
+    break;
+  case ONE_BY_ONE:
+    result = run_one_by_one(workers, benchmark, iterations);
+    break;
+  case NR_POLICIES:
+    exit(EXIT_FAILURE);
+  }
 
   result_print(workers, result);
 
