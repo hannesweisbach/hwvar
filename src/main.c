@@ -211,7 +211,7 @@ static benchmark_result_t run_one_by_one(threads_t *workers, benchmark_t *ops,
 
   unsigned int i;
   hwloc_bitmap_foreach_begin(i, workers->cpuset) {
-    work_t *work = &step->work[i];
+    work_t *work = &step->work[0];
     work->ops = ops;
     work->arg = NULL;
     work->barrier = &step->barrier;
