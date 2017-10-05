@@ -1,4 +1,7 @@
 #include <assert.h>
+#include <errno.h>
+#include <getopt.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -78,16 +81,53 @@ typedef struct {
   int repeats;
 } dgemm_thread_args_t;
 
+static unsigned N = 36;
+static unsigned repeats = 8192;
+
+static void dgemm_init(int argc, char *argv[]) {
+  static struct option longopts[] = {
+      {"dgemm-N", required_argument, NULL, 'N'},
+      {"dgemm-repetions", required_argument, NULL, 'r'},
+      {NULL, 0, NULL, 0}};
+
+  while (1) {
+    int c = getopt_long(argc, argv, "-N:r:", longopts, NULL);
+    if (c == -1)
+      break;
+    errno = 0;
+    switch (c) {
+    case 'N': {
+      unsigned long tmp = strtoul(optarg, NULL, 0);
+      if (errno == EINVAL || errno == ERANGE || tmp > INT_MAX) {
+        fprintf(stderr, "Could not parse --dgemm-N argument '%s': %s\n", optarg,
+                strerror(errno));
+        exit(EXIT_FAILURE);
+      }
+      N = (unsigned)tmp;
+    } break;
+    case 'r': {
+      unsigned long tmp = strtoul(optarg, NULL, 0);
+      if (errno == EINVAL || errno == ERANGE || tmp > INT_MAX) {
+        fprintf(stderr, "Could not parse --dgemm-N argument '%s': %s\n", optarg,
+                strerror(errno));
+      }
+      repeats = (unsigned)tmp;
+    } break;
+    case ':':
+    default:;
+    }
+  }
+}
+
 static void *init_argument(void *arg_) {
   assert(arg_ == NULL);
   dgemm_thread_args_t *arg =
       (dgemm_thread_args_t *)malloc(sizeof(dgemm_thread_args_t));
 
-  arg->N = 128;
-  arg->repeats = 81; // 92;
+  arg->N = (int)N;
+  arg->repeats = (int)repeats;
   arg->alpha = 1.0;
   arg->beta = 1.0;
-  const unsigned N = (unsigned)arg->N;
   arg->matrixA = (double *)malloc(sizeof(double) * N * N);
   arg->matrixB = (double *)malloc(sizeof(double) * N * N);
   arg->matrixC = (double *)malloc(sizeof(double) * N * N);
@@ -124,7 +164,7 @@ static void *call_work(void *arg_) {
 }
 
 benchmark_t dgemm_ops = {.name = "dgemm",
-                         .init = NULL,
+                         .init = dgemm_init,
                          .init_arg = init_argument,
                          .free_arg = destroy_argument,
                          .get_arg = get_argument,
