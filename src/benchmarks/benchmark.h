@@ -10,3 +10,6 @@ typedef struct {
   void *state;
 } benchmark_t;
 
+void init_benchmarks(const int argc, char *argv[]);
+benchmark_t *get_benchmark(const char *const name);
+void list_benchmarks(void);
