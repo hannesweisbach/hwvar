@@ -309,6 +309,7 @@ int main(int argc, char *argv[]) {
                 optarg, strerror(errno));
       }
       iterations = (unsigned)tmp;
+      break;
     case 'l':
       list_benchmarks();
       exit(EXIT_SUCCESS);
