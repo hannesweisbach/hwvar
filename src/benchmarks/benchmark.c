@@ -5,8 +5,9 @@
 #include <benchmark.h>
 
 #include "dgemm.h"
+#include "HACCmk.h"
 
-static benchmark_t *benchmarks[] = {&dgemm_ops};
+static benchmark_t *benchmarks[] = {&dgemm_ops, &HACCmk_ops};
 
 void init_benchmarks(const int argc, char *argv[]) {
   unsigned num_benchmarks = sizeof(benchmarks) / sizeof(benchmark_t *);
