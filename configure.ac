@@ -53,7 +53,14 @@ AC_CHECK_HEADER([stdlib.h], [], [AC_MSG_ERROR([stdlib.h not found.])])
 AC_CHECK_HEADER([errno.h], [], [AC_MSG_ERROR([errno.h not found.])])
 AC_CHECK_HEADER([pthread.h], [], [AC_MSG_ERROR([pthread.h not found.])])
 AC_CHECK_HEADER([hwloc.h], [], [AC_MSG_ERROR([hwloc.h not found.])])
+AC_CHECK_HEADER([limits.h], [], [AC_MSG_ERROR([limits.h not found.])])
+AC_CHECK_HEADER([sys/time.h], [], [AC_MSG_ERROR([sys/time.h not found.])])
 AC_CHECK_HEADERS([sched.h])
+
+AC_CHECK_FUNCS([clock_gettime], [], [AC_MSG_ERROR([clock_gettime() not found.])])
+AC_CHECK_FUNCS([memset], [], [AC_MSG_ERROR([memset() not found.])])
+AC_CHECK_FUNCS([strerror], [], [AC_MSG_ERROR([strerror() not found.])])
+AC_CHECK_FUNCS([strtoul], [], [AC_MSG_ERROR([strtoul() not found.])])
 
 AC_CHECK_TYPES([pthread_barrier_t], [], [], [[#include <pthread.h>]])
 
