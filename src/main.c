@@ -1,6 +1,7 @@
 #include <getopt.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 
 #include <hwloc.h>
 
@@ -160,13 +161,14 @@ static benchmark_result_t result_alloc(unsigned threads,
   return result;
 }
 
-static void result_print(threads_t *threads, benchmark_result_t result) {
+static void result_print(FILE *file, threads_t *threads,
+                         benchmark_result_t result) {
   for (unsigned thread = 0; thread < result.threads; ++thread) {
-    fprintf(stdout, "%2d ", threads->logical_to_os[thread]);
+    fprintf(file, "%2d ", threads->logical_to_os[thread]);
     for (unsigned rep = 0; rep < result.repetitions; ++rep) {
-      fprintf(stdout, "%10llu ", result.data[thread * result.repetitions + rep]);
+      fprintf(file, "%10llu ", result.data[thread * result.repetitions + rep]);
     }
-    fprintf(stdout, "\n");
+    fprintf(file, "\n");
   }
 }
 
@@ -235,6 +237,12 @@ static benchmark_result_t run_one_by_one(threads_t *workers, benchmark_t *ops,
   return result;
 }
 
+static int file_exists(const char *restrict name) {
+  struct stat tmp;
+  int err = stat(name, &tmp);
+  return (err == 0) || (errno != ENOENT);
+}
+
 int main(int argc, char *argv[]) {
   hwloc_topology_t topology;
   if (hwloc_topology_init(&topology)) {
@@ -258,18 +266,20 @@ int main(int argc, char *argv[]) {
   enum policy policy = NR_POLICIES;
   benchmark_t *benchmark = NULL;
   unsigned iterations = 10;
+  FILE *output = stdout;
 
   static struct option options[] = {
       {"policy", required_argument, NULL, 'p'},
       {"benchmarks", required_argument, NULL, 'b'},
       {"iterations", required_argument, NULL, 'i'},
       {"list-benchmarks", no_argument, NULL, 'l'},
+      {"output", required_argument, NULL, 'o'},
       {NULL, 0, NULL, 0}};
 
   opterr = 0;
 
   while (1) {
-    int c = getopt_long(argc, argv, "p:b:i:l", options, NULL);
+    int c = getopt_long(argc, argv, "p:b:i:lo:", options, NULL);
     if (c == -1)
       break;
     errno = 0;
@@ -302,6 +312,15 @@ int main(int argc, char *argv[]) {
     case 'l':
       list_benchmarks();
       exit(EXIT_SUCCESS);
+    case 'o':
+      if (strcmp(optarg, "-") == 0) {
+        break;
+      } else if (file_exists(optarg)) {
+        fprintf(stderr, "File %s already exists.\n", optarg);
+        exit(EXIT_FAILURE);
+      } else {
+        output = fopen(optarg, "w");
+      }
     case ':':
       break;
     default:
@@ -336,7 +355,7 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  result_print(workers, result);
+  result_print(output, workers, result);
 
   stop_workers(workers);
 }
