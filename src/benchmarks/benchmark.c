@@ -6,8 +6,11 @@
 
 #include "dgemm.h"
 #include "HACCmk.h"
+#include "stream.h"
 
-static benchmark_t *benchmarks[] = {&dgemm_ops, &HACCmk_ops};
+static benchmark_t *benchmarks[] = {&dgemm_ops,    &HACCmk_ops, &STREAM_Copy,
+                                    &STREAM_Scale, &STREAM_Add, &STREAM_Triad,
+                                    &STREAM};
 
 void init_benchmarks(const int argc, char *argv[]) {
   unsigned num_benchmarks = sizeof(benchmarks) / sizeof(benchmark_t *);
