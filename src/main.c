@@ -12,7 +12,7 @@
 #include "dgemm.h"
 
 static threads_t *spawn_workers(hwloc_topology_t topology) {
-  const int depth = hwloc_get_type_or_below_depth(topology, HWLOC_OBJ_CORE);
+  const int depth = hwloc_get_type_or_below_depth(topology, HWLOC_OBJ_PU);
   const unsigned num_threads =
       hwloc_get_nbobjs_by_depth(topology, (unsigned)depth);
 
@@ -40,7 +40,7 @@ static threads_t *spawn_workers(hwloc_topology_t topology) {
      * If no object for that type exists, NULL is returned. If there
      * are several levels with objects of that type, NULL is returned and ther
      * caller may fallback to hwloc_get_obj_by_depth(). */
-    hwloc_obj_t obj = hwloc_get_obj_by_type(topology, HWLOC_OBJ_CORE, i);
+    hwloc_obj_t obj = hwloc_get_obj_by_type(topology, HWLOC_OBJ_PU, i);
     if (obj == NULL) {
       printf("Error getting obj. Implement fallback to "
              "hwloc_get_obj_by_depth()?\n");
