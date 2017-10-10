@@ -162,9 +162,12 @@ static benchmark_result_t result_alloc(unsigned threads,
 }
 
 static void result_print(FILE *file, threads_t *threads,
-                         benchmark_result_t result) {
+                         benchmark_result_t result,
+                         hwloc_const_cpuset_t cpuset) {
+  int cpu = -1;
   for (unsigned thread = 0; thread < result.threads; ++thread) {
-    fprintf(file, "%2d ", threads->logical_to_os[thread]);
+    cpu = hwloc_bitmap_next(cpuset, cpu);
+    fprintf(file, "%2d ", threads->logical_to_os[cpu]);
     for (unsigned rep = 0; rep < result.repetitions; ++rep) {
       fprintf(file, "%10llu ", result.data[thread * result.repetitions + rep]);
     }
@@ -283,6 +286,8 @@ run_two_benchmarks(threads_t *workers, benchmark_t *ops1, benchmark_t *ops2,
     wait_until_done(&workers->threads[i].thread_arg);
   }
   hwloc_bitmap_foreach_end();
+
+  hwloc_bitmap_free(cpuset);
 
   return result;
 }
@@ -484,7 +489,11 @@ int main(int argc, char *argv[]) {
     case NR_POLICIES:
       exit(EXIT_FAILURE);
     }
-    result_print(output, workers, result);
+
+    hwloc_cpuset_t cpuset = hwloc_bitmap_alloc();
+    hwloc_bitmap_or(cpuset, cpuset1, cpuset2);
+    result_print(output, workers, result, cpuset);
+    hwloc_bitmap_free(cpuset);
   }
 
   stop_workers(workers);
