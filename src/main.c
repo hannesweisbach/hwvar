@@ -240,6 +240,53 @@ static benchmark_result_t run_one_by_one(threads_t *workers, benchmark_t *ops,
   return result;
 }
 
+static benchmark_result_t
+run_two_benchmarks(threads_t *workers, benchmark_t *ops1, benchmark_t *ops2,
+                   hwloc_const_cpuset_t set1, hwloc_const_cpuset_t set2,
+                   const unsigned repetitions) {
+  assert(!hwloc_bitmap_intersects(set1, set2));
+  hwloc_cpuset_t cpuset = hwloc_bitmap_alloc();
+  hwloc_bitmap_or(cpuset, set1, set2);
+  hwloc_bitmap_and(cpuset, cpuset, workers->cpuset);
+  assert(hwloc_bitmap_isincluded(cpuset, workers->cpuset));
+  int cpus = hwloc_bitmap_weight(cpuset);
+  benchmark_result_t result = result_alloc((unsigned)cpus, repetitions);
+  step_t *step = init_step(cpus);
+
+  unsigned int cpu;
+  unsigned i = 0;
+  hwloc_bitmap_foreach_begin(cpu, cpuset) {
+    work_t *work = &step->work[i];
+    work->ops = hwloc_bitmap_isset(set1, cpu) ? ops1 : ops2;
+    work->arg = NULL;
+    work->barrier = &step->barrier;
+    work->result = &result.data[i * repetitions];
+    work->reps = repetitions;
+
+    struct arg *arg = &workers->threads[cpu].thread_arg;
+    queue_work(arg, work);
+    i = i + 1;
+  }
+  hwloc_bitmap_foreach_end();
+
+  // run dirigent
+  hwloc_bitmap_foreach_begin(i, workers->cpuset) {
+    if (workers->threads[i].thread_arg.dirigent &&
+        hwloc_bitmap_isset(cpuset, i)) {
+      worker(&workers->threads[i].thread_arg);
+      break;
+    }
+  }
+  hwloc_bitmap_foreach_end();
+
+  hwloc_bitmap_foreach_begin(i, cpuset) {
+    wait_until_done(&workers->threads[i].thread_arg);
+  }
+  hwloc_bitmap_foreach_end();
+
+  return result;
+}
+
 static int file_exists(const char *restrict name) {
   struct stat tmp;
   int err = stat(name, &tmp);
@@ -276,13 +323,15 @@ int main(int argc, char *argv[]) {
     hwloc_topology_restrict(topology, restricted, 0);
   }
 
-  enum policy { PARALLEL, ONE_BY_ONE, NR_POLICIES };
+  enum policy { PARALLEL, ONE_BY_ONE, PAIR, NR_POLICIES };
 
   enum policy policy = PARALLEL;
   benchmark_t **benchmarks = NULL;
   unsigned num_benchmarks = 0;
   unsigned iterations = 10;
   FILE *output = stdout;
+  hwloc_cpuset_t cpuset1 = hwloc_bitmap_alloc();
+  hwloc_cpuset_t cpuset2 = hwloc_bitmap_alloc();
 
   static struct option options[] = {
       {"policy", required_argument, NULL, 'p'},
@@ -290,6 +339,8 @@ int main(int argc, char *argv[]) {
       {"iterations", required_argument, NULL, 'i'},
       {"list-benchmarks", no_argument, NULL, 'l'},
       {"output", required_argument, NULL, 'o'},
+      {"cpuset-1", required_argument, NULL, 1},
+      {"cpuset-2", required_argument, NULL, 2},
       {NULL, 0, NULL, 0}};
 
   opterr = 0;
@@ -300,11 +351,25 @@ int main(int argc, char *argv[]) {
       break;
     errno = 0;
     switch (c) {
+    case 1:
+      if (hwloc_bitmap_list_sscanf(cpuset1, optarg) < 0) {
+        fprintf(stderr, "Error parsing cpuset %s\n", optarg);
+        exit(EXIT_FAILURE);
+      }
+      break;
+    case 2:
+      if (hwloc_bitmap_list_sscanf(cpuset2, optarg) < 0) {
+        fprintf(stderr, "Error parsing cpuset %s\n", optarg);
+        exit(EXIT_FAILURE);
+      }
+      break;
     case 'p':
       if (strcmp(optarg, "parallel") == 0) {
         policy = PARALLEL;
       } else if (strcmp(optarg, "onebyone") == 0) {
         policy = ONE_BY_ONE;
+      } else if (strcmp(optarg, "pair") == 0) {
+        policy = PAIR;
       } else {
         fprintf(stderr, "Unkown policy: %s\n", optarg);
         exit(EXIT_FAILURE);
@@ -369,6 +434,31 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
+  hwloc_const_cpuset_t global = hwloc_topology_get_topology_cpuset(topology);
+  if (!hwloc_bitmap_isincluded(cpuset1, global)) {
+    fprintf(stderr, "cpuset-1 is not a subset of the complete cpuset.\n");
+    char *set1str, *setstr;
+    hwloc_bitmap_list_asprintf(&set1str, cpuset1);
+    hwloc_bitmap_list_asprintf(&setstr, global);
+    fprintf(stderr, "cpuset-1: %s\n", set1str);
+    fprintf(stderr, "global:   %s\n", setstr);
+    free(setstr);
+    free(set1str);
+    exit(EXIT_FAILURE);
+  }
+
+  if (!hwloc_bitmap_isincluded(cpuset2, global)) {
+    fprintf(stderr, "cpuset-2 is not a subset of the complete cpuset.\n");
+    char *set2str, *setstr;
+    hwloc_bitmap_list_asprintf(&set2str, cpuset2);
+    hwloc_bitmap_list_asprintf(&setstr, global);
+    fprintf(stderr, "cpuset-2: %s\n", set2str);
+    fprintf(stderr, "global:   %s\n", setstr);
+    free(setstr);
+    free(set2str);
+    exit(EXIT_FAILURE);
+  }
+
   init_benchmarks(argc, argv);
 
   threads_t *workers = spawn_workers(topology);
@@ -385,6 +475,11 @@ int main(int argc, char *argv[]) {
       break;
     case ONE_BY_ONE:
       result = run_one_by_one(workers, benchmark, iterations);
+      break;
+    case PAIR:
+      result = run_two_benchmarks(workers, benchmarks[i], benchmarks[i + 1],
+                                  cpuset1, cpuset2, iterations);
+      i = i + 1;
       break;
     case NR_POLICIES:
       exit(EXIT_FAILURE);
