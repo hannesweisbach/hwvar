@@ -178,8 +178,9 @@ static benchmark_result_t run_in_parallel(threads_t *workers, benchmark_t *ops,
   benchmark_result_t result = result_alloc((unsigned)cpus, repetitions);
   step_t *step = init_step(cpus);
 
-  unsigned int i;
-  hwloc_bitmap_foreach_begin(i, workers->cpuset) {
+  unsigned int cpu;
+  unsigned i = 0;
+  hwloc_bitmap_foreach_begin(cpu, workers->cpuset) {
     work_t *work = &step->work[i];
     work->ops = ops;
     work->arg = NULL;
@@ -189,6 +190,7 @@ static benchmark_result_t run_in_parallel(threads_t *workers, benchmark_t *ops,
 
     struct arg *arg = &workers->threads[i].thread_arg;
     queue_work(arg, work);
+    i = i + 1;
   }
   hwloc_bitmap_foreach_end();
 
@@ -211,13 +213,13 @@ static benchmark_result_t run_in_parallel(threads_t *workers, benchmark_t *ops,
 
 static benchmark_result_t run_one_by_one(threads_t *workers, benchmark_t *ops,
                                          unsigned repetitions) {
-
   int cpus = hwloc_bitmap_weight(workers->cpuset);
   benchmark_result_t result = result_alloc((unsigned)cpus, repetitions);
   step_t *step = init_step(1);
 
-  unsigned int i;
-  hwloc_bitmap_foreach_begin(i, workers->cpuset) {
+  unsigned int i = 0;
+  unsigned cpu;
+  hwloc_bitmap_foreach_begin(cpu, workers->cpuset) {
     work_t *work = &step->work[0];
     work->ops = ops;
     work->arg = NULL;
@@ -231,6 +233,7 @@ static benchmark_result_t run_one_by_one(threads_t *workers, benchmark_t *ops,
       worker(arg);
     }
     wait_until_done(arg);
+    i = i + 1;
   }
   hwloc_bitmap_foreach_end();
 
