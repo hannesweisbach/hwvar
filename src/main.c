@@ -246,6 +246,18 @@ static int file_exists(const char *restrict name) {
   return (err == 0) || (errno != ENOENT);
 }
 
+static unsigned count_chars(const char *str, char c) {
+  if (str == NULL)
+    return 0;
+  unsigned int chars = 0;
+  for (int i = 0; str[i] != '\0'; ++i) {
+    if (str[i] == c) {
+      ++chars;
+    }
+  }
+  return chars;
+}
+
 int main(int argc, char *argv[]) {
   hwloc_topology_t topology;
   if (hwloc_topology_init(&topology)) {
@@ -266,8 +278,9 @@ int main(int argc, char *argv[]) {
 
   enum policy { PARALLEL, ONE_BY_ONE, NR_POLICIES };
 
-  enum policy policy = NR_POLICIES;
-  benchmark_t *benchmark = NULL;
+  enum policy policy = PARALLEL;
+  benchmark_t **benchmarks = NULL;
+  unsigned num_benchmarks = 0;
   unsigned iterations = 10;
   FILE *output = stdout;
 
@@ -298,11 +311,24 @@ int main(int argc, char *argv[]) {
       }
       break;
     case 'b':
-      benchmark = get_benchmark(optarg);
-      if (benchmark == NULL) {
-        fprintf(stderr, "Unkown benchmark: '%s'\n", optarg);
+      num_benchmarks = count_chars(optarg, ',') + 1;
+      benchmarks =
+          (benchmark_t **)malloc(sizeof(benchmark_t *) * num_benchmarks);
+      if (benchmarks == NULL) {
+        fprintf(stderr, "Error allocating memory");
         exit(EXIT_FAILURE);
       }
+      char *arg = strtok(optarg, ",");
+      unsigned i = 0;
+      for (i = 0; arg != NULL && i < num_benchmarks; ++i) {
+        benchmarks[i] = get_benchmark(arg);
+        if (benchmarks[i] == NULL) {
+          fprintf(stderr, "Benchmark %s unknown. Skipping.\n", arg);
+          --i;
+        }
+        arg = strtok(NULL, ",");
+      }
+      num_benchmarks = i;
       break;
     case 'i':
       errno = 0;
@@ -332,7 +358,7 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  if (benchmark == NULL) {
+  if (benchmarks == NULL || num_benchmarks == 0) {
     fprintf(stderr, "No benchmark selected.\n");
     // TODO: list benchmarks.
     exit(EXIT_FAILURE);
@@ -347,19 +373,24 @@ int main(int argc, char *argv[]) {
 
   threads_t *workers = spawn_workers(topology);
 
-  benchmark_result_t result;
-  switch (policy) {
-  case PARALLEL:
-    result = run_in_parallel(workers, benchmark, iterations);
-    break;
-  case ONE_BY_ONE:
-    result = run_one_by_one(workers, benchmark, iterations);
-    break;
-  case NR_POLICIES:
-    exit(EXIT_FAILURE);
-  }
+  for (unsigned i = 0; i < num_benchmarks; ++i) {
+    benchmark_t *benchmark = benchmarks[i];
 
-  result_print(output, workers, result);
+    fprintf(stdout, "Running %s\n", benchmark->name);
+
+    benchmark_result_t result;
+    switch (policy) {
+    case PARALLEL:
+      result = run_in_parallel(workers, benchmark, iterations);
+      break;
+    case ONE_BY_ONE:
+      result = run_one_by_one(workers, benchmark, iterations);
+      break;
+    case NR_POLICIES:
+      exit(EXIT_FAILURE);
+    }
+    result_print(output, workers, result);
+  }
 
   stop_workers(workers);
 }
