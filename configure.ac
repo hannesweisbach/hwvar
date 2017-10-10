@@ -65,10 +65,10 @@ AC_CHECK_FUNCS([strtoul], [], [AC_MSG_ERROR([strtoul() not found.])])
 AC_CHECK_TYPES([pthread_barrier_t], [], [], [[#include <pthread.h>]])
 
 AC_CHECK_FUNCS([sched_setaffinity])
+AC_SEARCH_LIBS([pow], [m], [], [AC_MSG_ERROR([libm not found.])])
 AC_SEARCH_LIBS([hwloc_topology_init], [hwloc], [], [
   AC_MSG_ERROR([unable to find the hwloc_topology_init() function])
 ])
-
 
 #AC_C_RESTRICT
 AX_CHECK_COMPILE_FLAG([-std=c11], [CFLAGS="$CFLAGS -std=c11"])
