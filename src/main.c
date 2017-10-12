@@ -99,7 +99,7 @@ static void *stop_thread(void *arg_) {
 }
 
 static int stop_single_worker(thread_data_t *thread, step_t *step) {
-  benchmark_t stop_ops = {"stop", NULL, NULL, NULL, NULL, stop_thread, NULL};
+  benchmark_t stop_ops = {"stop", NULL, NULL, NULL, stop_thread, NULL};
 
   step->work->ops = &stop_ops;
   step->work->arg = &thread->thread_arg;

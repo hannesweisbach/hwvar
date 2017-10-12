@@ -140,7 +140,6 @@ benchmark_t HACCmk_ops = {.name = "HACCmk",
                           .init = NULL,
                           .init_arg = HACCmk_argument_init,
                           .free_arg = HACCmk_argument_destroy,
-                          .get_arg = NULL,
                           .call = HACCmk_work,
                           .state = NULL};
 

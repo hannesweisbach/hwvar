@@ -151,11 +151,6 @@ static void destroy_argument(void *arg_) {
   free(arg);
 }
 
-static void *get_argument(void *args_, int idx) {
-  dgemm_thread_args_t *args = (dgemm_thread_args_t *)args_;
-  return &args[idx];
-}
-
 static void *call_work(void *arg_) {
   dgemm_thread_args_t *arg = (dgemm_thread_args_t *)arg_;
   do_dgemm(arg->matrixA, arg->matrixB, arg->matrixC, arg->N, arg->alpha,
@@ -167,7 +162,6 @@ benchmark_t dgemm_ops = {.name = "dgemm",
                          .init = dgemm_init,
                          .init_arg = init_argument,
                          .free_arg = destroy_argument,
-                         .get_arg = get_argument,
                          .call = call_work,
                          .state = NULL};
 

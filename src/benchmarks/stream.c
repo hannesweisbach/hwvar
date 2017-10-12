@@ -305,7 +305,6 @@ benchmark_t STREAM_Copy = {"STREAM_Copy",
                            STREAM_Init,
                            STREAM_argument_init,
                            STREAM_argument_destroy,
-                           NULL,
                            STREAM_Copy_call,
                            NULL};
 
@@ -313,7 +312,6 @@ benchmark_t STREAM_Scale = {"STREAM_Scale",
                             STREAM_Init,
                             STREAM_argument_init,
                             STREAM_argument_destroy,
-                            NULL,
                             STREAM_Scale_call,
                             NULL};
 
@@ -321,7 +319,6 @@ benchmark_t STREAM_Add = {"STREAM_Add",
                           STREAM_Init,
                           STREAM_argument_init,
                           STREAM_argument_destroy,
-                          NULL,
                           STREAM_Add_call,
                           NULL};
 
@@ -329,7 +326,6 @@ benchmark_t STREAM_Triad = {"STREAM_Triad",
                             STREAM_Init,
                             STREAM_argument_init,
                             STREAM_argument_destroy,
-                            NULL,
                             STREAM_Triad_call,
                             NULL};
 
@@ -337,7 +333,6 @@ benchmark_t STREAM = {"STREAM",
                       STREAM_Init,
                       STREAM_argument_init,
                       STREAM_argument_destroy,
-                      NULL,
                       STREAM_call,
                       NULL};
 

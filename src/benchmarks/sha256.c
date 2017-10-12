@@ -595,7 +595,6 @@ benchmark_t SHA256 = {"sha256",
                       SHA256_Init,
                       SHA256_argument_init,
                       SHA256_argument_destroy,
-                      NULL,
                       SHA256_call,
                       NULL};
 
