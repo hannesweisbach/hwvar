@@ -594,6 +594,7 @@ static void *SHA256_call(void *arg_) {
 benchmark_t SHA256 = {"sha256",
                       SHA256_Init,
                       SHA256_argument_init,
+                      NULL,
                       SHA256_argument_destroy,
                       SHA256_call,
                       NULL};

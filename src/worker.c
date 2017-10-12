@@ -115,6 +115,9 @@ void *worker(void *arg_) {
     work->ops->call(benchmark_arg);
 
     for (unsigned rep = 0; rep < work->reps; ++rep) {
+      if (work->ops->reset_arg) {
+        work->ops->reset_arg(benchmark_arg);
+      }
       // const uint64_t st = get_time();
       const uint64_t start = arch_timestamp_begin();
       work->ops->call(benchmark_arg);

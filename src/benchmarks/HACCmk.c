@@ -139,6 +139,7 @@ static void *HACCmk_work(void *arg_) {
 benchmark_t HACCmk_ops = {.name = "HACCmk",
                           .init = NULL,
                           .init_arg = HACCmk_argument_init,
+                          .reset_arg = NULL,
                           .free_arg = HACCmk_argument_destroy,
                           .call = HACCmk_work,
                           .state = NULL};

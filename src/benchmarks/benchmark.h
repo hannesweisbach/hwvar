@@ -4,6 +4,7 @@ typedef struct {
   const char *const name;
   void (*init)(int argc, char *argv[]);
   void *(*init_arg)(void *);
+  void (*reset_arg)(void *);
   void (*free_arg)(void *args);
   void *(*call)(void *arg);
   void *state;
