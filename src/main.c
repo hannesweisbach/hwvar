@@ -199,7 +199,8 @@ static benchmark_result_t run_in_parallel(threads_t *workers, benchmark_t *ops,
 
   // run dirigent
   hwloc_bitmap_foreach_begin(i, workers->cpuset) {
-    if (workers->threads[i].thread_arg.dirigent) {
+    if (workers->threads[i].thread_arg.dirigent/* &&
+        hwloc_bitmap_isset(cpuset, i)*/) {
       worker(&workers->threads[i].thread_arg);
       break;
     }
@@ -337,6 +338,7 @@ int main(int argc, char *argv[]) {
   FILE *output = stdout;
   hwloc_cpuset_t cpuset1 = hwloc_bitmap_alloc();
   hwloc_cpuset_t cpuset2 = hwloc_bitmap_alloc();
+  hwloc_cpuset_t runset = hwloc_bitmap_alloc();
 
   static struct option options[] = {
       {"policy", required_argument, NULL, 'p'},
@@ -468,6 +470,12 @@ int main(int argc, char *argv[]) {
 
   threads_t *workers = spawn_workers(topology);
 
+  if (policy == PAIR) {
+    hwloc_bitmap_or(runset, cpuset1, cpuset2);
+  } else {
+    hwloc_bitmap_or(runset, runset, workers->cpuset);
+  }
+
   for (unsigned i = 0; i < num_benchmarks; ++i) {
     benchmark_t *benchmark = benchmarks[i];
 
@@ -490,10 +498,7 @@ int main(int argc, char *argv[]) {
       exit(EXIT_FAILURE);
     }
 
-    hwloc_cpuset_t cpuset = hwloc_bitmap_alloc();
-    hwloc_bitmap_or(cpuset, cpuset1, cpuset2);
-    result_print(output, workers, result, cpuset);
-    hwloc_bitmap_free(cpuset);
+    result_print(output, workers, result, runset);
   }
 
   stop_workers(workers);
