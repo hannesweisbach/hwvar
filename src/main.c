@@ -431,10 +431,10 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  if (benchmarks == NULL || num_benchmarks == 0) {
-    fprintf(stderr, "No benchmark selected.\n");
-    // TODO: list benchmarks.
-    exit(EXIT_FAILURE);
+  assert((benchmarks == NULL) == (num_benchmarks == 0));
+
+  if (benchmarks == NULL) {
+    list_benchmarks();
   }
 
   if (policy >= NR_POLICIES) {
