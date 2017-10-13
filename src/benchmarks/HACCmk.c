@@ -109,9 +109,9 @@ static void *HACCmk_work(void *arg_) {
       arg->mass[i] = (float)i * 0.01f + arg->xx[i];
     }
 
-    memset(arg->vx1, 0, (unsigned)n / sizeof(float));
-    memset(arg->vy1, 0, (unsigned)n / sizeof(float));
-    memset(arg->vz1, 0, (unsigned)n / sizeof(float));
+    memset(arg->vx1, 0, (unsigned)n * sizeof(float));
+    memset(arg->vy1, 0, (unsigned)n * sizeof(float));
+    memset(arg->vz1, 0, (unsigned)n * sizeof(float));
 
     for (int i = 0; i < arg->count; ++i) {
       Step10_orig(n, arg->xx[i], arg->yy[i], arg->zz[i], fsrrmax2, mp_rsm2,
