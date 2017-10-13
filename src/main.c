@@ -12,7 +12,8 @@
 
 #include "dgemm.h"
 
-static threads_t *spawn_workers(hwloc_topology_t topology) {
+static threads_t *spawn_workers(hwloc_topology_t topology,
+                                hwloc_const_cpuset_t cpuset) {
   const int depth = hwloc_get_type_or_below_depth(topology, HWLOC_OBJ_PU);
   const unsigned num_threads =
       hwloc_get_nbobjs_by_depth(topology, (unsigned)depth);
@@ -22,7 +23,7 @@ static threads_t *spawn_workers(hwloc_topology_t topology) {
     exit(EXIT_FAILURE);
   }
 
-  fprintf(stderr, "Spawning %d workers\n", num_threads);
+  fprintf(stderr, "Spawning %d workers\n", hwloc_bitmap_weight(cpuset));
 
   workers->threads =
       (thread_data_t *)malloc(sizeof(thread_data_t) * num_threads);
@@ -35,7 +36,8 @@ static threads_t *spawn_workers(hwloc_topology_t topology) {
     exit(EXIT_FAILURE);
   }
 
-  hwloc_cpuset_t cpuset = hwloc_bitmap_alloc();
+  // iterate over all cores and pick the ones in the cpuset
+  hwloc_cpuset_t allocated = hwloc_bitmap_alloc();
   for (unsigned i = 0; i < num_threads; ++i) {
     /* TODO Awesome:
      * If no object for that type exists, NULL is returned. If there
@@ -47,6 +49,15 @@ static threads_t *spawn_workers(hwloc_topology_t topology) {
              "hwloc_get_obj_by_depth()?\n");
       exit(EXIT_FAILURE);
     }
+
+    hwloc_cpuset_t tmp = hwloc_bitmap_dup(obj->cpuset);
+    // TODO might this get the same mask for two sets?!
+    hwloc_bitmap_singlify(tmp);
+    if (!hwloc_bitmap_isincluded(tmp, cpuset)) {
+      hwloc_bitmap_free(tmp);
+      continue;
+    }
+
     thread_data_t *thread = &workers->threads[i];
     // TODO handle errors.
     pthread_mutex_init(&thread->thread_arg.lock, NULL);
@@ -60,17 +71,12 @@ static threads_t *spawn_workers(hwloc_topology_t topology) {
     thread->thread_arg.thread = i;
     thread->thread_arg.cpu = obj->os_index;
     thread->thread_arg.topology = topology;
-    {
-      hwloc_cpuset_t tmp = hwloc_bitmap_dup(obj->cpuset);
-      // TODO might this get the same mask for two sets?!
-      hwloc_bitmap_singlify(tmp);
-      thread->thread_arg.cpuset = tmp;
-    }
+    thread->thread_arg.cpuset = tmp;
     hwloc_bitmap_asprintf(&thread->thread_arg.cpuset_string, cpuset);
     fprintf(stderr, "Found L:%u P:%u %s\n", obj->logical_index, obj->os_index,
             thread->thread_arg.cpuset_string);
 
-    hwloc_bitmap_set(cpuset, i);
+    hwloc_bitmap_set(allocated, i);
     pthread_mutex_unlock(&thread->thread_arg.lock);
 
     workers->logical_to_os[obj->logical_index] = obj->os_index;
@@ -85,6 +91,9 @@ static threads_t *spawn_workers(hwloc_topology_t topology) {
       }
     }
   }
+
+  assert(hwloc_bitmap_isequal(allocated, cpuset));
+  hwloc_bitmap_free(allocated);
 
   workers->cpuset = cpuset;
 
@@ -443,6 +452,12 @@ int main(int argc, char *argv[]) {
   }
 
   hwloc_const_cpuset_t global = hwloc_topology_get_topology_cpuset(topology);
+
+  /* default is the whole machine */
+  if (hwloc_bitmap_iszero(cpuset1)) {
+    hwloc_bitmap_copy(cpuset1, global);
+  }
+
   if (!hwloc_bitmap_isincluded(cpuset1, global)) {
     fprintf(stderr, "cpuset-1 is not a subset of the complete cpuset.\n");
     char *set1str, *setstr;
@@ -467,15 +482,12 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
+  assert((policy == PAIR) == !hwloc_bitmap_iszero(cpuset2));
+  hwloc_bitmap_or(runset, cpuset1, cpuset2);
+
   init_benchmarks(argc, argv);
 
-  threads_t *workers = spawn_workers(topology);
-
-  if (policy == PAIR) {
-    hwloc_bitmap_or(runset, cpuset1, cpuset2);
-  } else {
-    hwloc_bitmap_or(runset, runset, workers->cpuset);
-  }
+  threads_t *workers = spawn_workers(topology, runset);
 
   for (unsigned i = 0; i < num_benchmarks; ++i) {
     benchmark_t *benchmark = benchmarks[i];
