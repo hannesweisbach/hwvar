@@ -40,7 +40,6 @@ typedef struct thread_data {
 typedef struct threads {
   thread_data_t *threads;
   hwloc_const_cpuset_t cpuset;
-  unsigned *logical_to_os;
 } threads_t;
 
 typedef struct step {

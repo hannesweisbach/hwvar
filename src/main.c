@@ -31,11 +31,6 @@ static threads_t *spawn_workers(hwloc_topology_t topology,
     exit(EXIT_FAILURE);
   }
 
-  workers->logical_to_os = (unsigned *)malloc(sizeof(unsigned) * num_threads);
-  if (workers->logical_to_os == NULL) {
-    exit(EXIT_FAILURE);
-  }
-
   // iterate over all cores and pick the ones in the cpuset
   hwloc_cpuset_t allocated = hwloc_bitmap_alloc();
   for (unsigned i = 0; i < num_threads; ++i) {
@@ -79,8 +74,6 @@ static threads_t *spawn_workers(hwloc_topology_t topology,
     hwloc_bitmap_set(allocated, i);
     pthread_mutex_unlock(&thread->thread_arg.lock);
 
-    workers->logical_to_os[obj->logical_index] = obj->os_index;
-
     if (i > 0) {
       int err =
           pthread_create(&thread->thread, NULL, worker, &thread->thread_arg);
@@ -92,10 +85,9 @@ static threads_t *spawn_workers(hwloc_topology_t topology,
     }
   }
 
-  assert(hwloc_bitmap_isequal(allocated, cpuset));
-  hwloc_bitmap_free(allocated);
+  assert(hwloc_bitmap_weight(allocated) == hwloc_bitmap_weight(cpuset));
 
-  workers->cpuset = cpuset;
+  workers->cpuset = allocated;
 
   return workers;
 }
@@ -171,13 +163,12 @@ static benchmark_result_t result_alloc(unsigned threads,
   return result;
 }
 
-static void result_print(FILE *file, threads_t *threads,
-                         benchmark_result_t result,
+static void result_print(FILE *file, benchmark_result_t result,
                          hwloc_const_cpuset_t cpuset) {
   int cpu = -1;
   for (unsigned thread = 0; thread < result.threads; ++thread) {
     cpu = hwloc_bitmap_next(cpuset, cpu);
-    fprintf(file, "%2d ", threads->logical_to_os[cpu]);
+    fprintf(file, "%2d ", cpu);
     for (unsigned rep = 0; rep < result.repetitions; ++rep) {
       fprintf(file, "%10" PRIu64 " ", result.data[thread * result.repetitions + rep]);
     }
@@ -511,7 +502,7 @@ int main(int argc, char *argv[]) {
       exit(EXIT_FAILURE);
     }
 
-    result_print(output, workers, result, runset);
+    result_print(output, result, runset);
   }
 
   stop_workers(workers);
