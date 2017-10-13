@@ -1,4 +1,5 @@
 #include <getopt.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
@@ -169,7 +170,7 @@ static void result_print(FILE *file, threads_t *threads,
     cpu = hwloc_bitmap_next(cpuset, cpu);
     fprintf(file, "%2d ", threads->logical_to_os[cpu]);
     for (unsigned rep = 0; rep < result.repetitions; ++rep) {
-      fprintf(file, "%10llu ", result.data[thread * result.repetitions + rep]);
+      fprintf(file, "%10" PRIu64 " ", result.data[thread * result.repetitions + rep]);
     }
     fprintf(file, "\n");
   }
