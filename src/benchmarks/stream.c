@@ -1,3 +1,5 @@
+// clang-format off
+
 /*-----------------------------------------------------------------------*/
 /* Program: STREAM                                                       */
 /* Revision: $Id: stream.c,v 5.10 2013/01/17 16:01:06 mccalpin Exp mccalpin $ */
@@ -145,6 +147,8 @@
  * Thanks!
  *
  *-----------------------------------------------------------------------*/
+
+// clang-format on
 
 #include <assert.h>
 #include <errno.h>
