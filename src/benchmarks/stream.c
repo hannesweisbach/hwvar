@@ -166,12 +166,39 @@ typedef struct {
   STREAM_TYPE *c;
 } STREAM_t;
 
-static int ntimes = 10;
+enum type {
+  COPY = 0,
+  SCALE,
+  ADD,
+  TRIAD,
+  ALL,
+  NTYPES
+};
+
+static int ntimes[NTYPES] = {
+    10, 10, 10, 10, 10,
+};
+
 static ssize_t STREAM_ARRAY_SIZE = 10000000;
+
+static int parse_int(const char *opt, const char *name) {
+  errno = 0;
+  unsigned long tmp = strtoul(opt, NULL, 0);
+  if (errno == EINVAL || errno == ERANGE || tmp > INT_MAX) {
+    fprintf(stderr, "Could not parse %s argument '%s': %s\n", name, opt,
+            strerror(errno));
+    exit(EXIT_FAILURE);
+  }
+  return (int)tmp;
+}
 
 static void STREAM_Init(int argc, char *argv[]) {
   static struct option longopts[] = {
-      {"STREAM-n", required_argument, NULL, 'n'},
+      {"STREAM-Copy-rounds", required_argument, NULL, 0},
+      {"STREAM-Scale-rounds", required_argument, NULL, 1},
+      {"STREAM-Add-rounds", required_argument, NULL, 2},
+      {"STREAM-Triad-rounds", required_argument, NULL, 3},
+      {"STREAM-rounds", required_argument, NULL, 4},
       {"STREAM-size", required_argument, NULL, 's'},
       {NULL, 0, NULL, 0}};
 
@@ -181,20 +208,18 @@ static void STREAM_Init(int argc, char *argv[]) {
       break;
     errno = 0;
     switch (c) {
-    case 'n': {
-      unsigned long tmp = strtoul(optarg, NULL, 0);
-      if (errno == EINVAL || errno == ERANGE || tmp > INT_MAX) {
-        fprintf(stderr, "Could not parse --STREAM-n argument '%s': %s\n", optarg,
-                strerror(errno));
-        exit(EXIT_FAILURE);
-      }
-      ntimes = (int)tmp;
-    } break;
+    case 0:
+    case 1:
+    case 2:
+    case 3:
+    case 4:
+      ntimes[c] = parse_int(optarg, longopts[c].name);
+      break;
     case 's': {
-       long long tmp = strtoll(optarg, NULL, 0);
-       if (errno == EINVAL || errno == ERANGE || tmp < 0) {
-         fprintf(stderr, "Could not parse --STREAM-size argument '%s': %s\n",
-                 optarg, strerror(errno));
+      long long tmp = strtoll(optarg, NULL, 0);
+      if (errno == EINVAL || errno == ERANGE || tmp < 0) {
+        fprintf(stderr, "Could not parse --STREAM-size argument '%s': %s\n",
+                optarg, strerror(errno));
       }
       STREAM_ARRAY_SIZE = tmp;
     } break;
@@ -241,7 +266,7 @@ static void STREAM_argument_destroy(void *arg_) {
 static void *STREAM_Copy_call(void *arg_) {
   STREAM_t *arg = (STREAM_t *)arg_;
 
-  for (int k = 0; k < ntimes; ++k) {
+  for (int k = 0; k < ntimes[COPY]; ++k) {
     for (ssize_t j = 0; j < STREAM_ARRAY_SIZE; j++)
       arg->c[j] = arg->a[j];
   }
@@ -253,7 +278,7 @@ static void *STREAM_Scale_call(void *arg_) {
   STREAM_t *arg = (STREAM_t *)arg_;
   const STREAM_TYPE scalar = (STREAM_TYPE)3.0;
 
-  for (int k = 0; k < ntimes; ++k) {
+  for (int k = 0; k < ntimes[SCALE]; ++k) {
     for (ssize_t j = 0; j < STREAM_ARRAY_SIZE; j++)
       arg->b[j] = scalar * arg->c[j];
   }
@@ -264,7 +289,7 @@ static void *STREAM_Scale_call(void *arg_) {
 static void *STREAM_Add_call(void *arg_) {
   STREAM_t *arg = (STREAM_t *)arg_;
 
-  for (int k = 0; k < ntimes; ++k) {
+  for (int k = 0; k < ntimes[ADD]; ++k) {
     for (ssize_t j = 0; j < STREAM_ARRAY_SIZE; j++)
       arg->c[j] = arg->a[j] + arg->b[j];
   }
@@ -276,7 +301,7 @@ static void *STREAM_Triad_call(void *arg_) {
   STREAM_t *arg = (STREAM_t *)arg_;
   const STREAM_TYPE scalar = (STREAM_TYPE)3.0;
 
-  for (int k = 0; k < ntimes; ++k) {
+  for (int k = 0; k < ntimes[TRIAD]; ++k) {
     for (ssize_t j = 0; j < STREAM_ARRAY_SIZE; j++)
       arg->a[j] = arg->b[j] + scalar * arg->c[j];
   }
@@ -286,17 +311,20 @@ static void *STREAM_Triad_call(void *arg_) {
 
 static void *STREAM_call(void *arg_) {
   STREAM_t *arg = (STREAM_t *)arg_;
-  const int ntimes_copy = ntimes;
-  ntimes = 1;
+  int ntimes_copy[NTYPES];
+  memcpy(&ntimes_copy, &ntimes, sizeof(ntimes));
+  for (int i = COPY; i < ALL; ++i) {
+    ntimes[i] = 1;
+  }
 
-  for (int k = 0; k < ntimes_copy; ++k) {
+  for (int k = 0; k < ntimes[ALL]; ++k) {
     STREAM_Copy_call(arg);
     STREAM_Scale_call(arg);
     STREAM_Add_call(arg);
     STREAM_Triad_call(arg);
   }
 
-  ntimes = ntimes_copy;
+  memcpy(&ntimes, &ntimes_copy, sizeof(ntimes));
 
   return NULL;
 }
