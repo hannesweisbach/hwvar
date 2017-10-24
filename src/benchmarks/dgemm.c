@@ -86,8 +86,8 @@ static unsigned repeats = 8192;
 
 static void dgemm_init(int argc, char *argv[]) {
   static struct option longopts[] = {
-      {"dgemm-N", required_argument, NULL, 'N'},
-      {"dgemm-repetions", required_argument, NULL, 'r'},
+      {"dgemm-size", required_argument, NULL, 'N'},
+      {"dgemm-rounds", required_argument, NULL, 'r'},
       {NULL, 0, NULL, 0}};
 
   while (1) {
@@ -99,7 +99,7 @@ static void dgemm_init(int argc, char *argv[]) {
     case 'N': {
       unsigned long tmp = strtoul(optarg, NULL, 0);
       if (errno == EINVAL || errno == ERANGE || tmp > INT_MAX) {
-        fprintf(stderr, "Could not parse --dgemm-N argument '%s': %s\n", optarg,
+        fprintf(stderr, "Could not parse --dgemm-size argument '%s': %s\n", optarg,
                 strerror(errno));
         exit(EXIT_FAILURE);
       }
@@ -108,7 +108,7 @@ static void dgemm_init(int argc, char *argv[]) {
     case 'r': {
       unsigned long tmp = strtoul(optarg, NULL, 0);
       if (errno == EINVAL || errno == ERANGE || tmp > INT_MAX) {
-        fprintf(stderr, "Could not parse --dgemm-N argument '%s': %s\n", optarg,
+        fprintf(stderr, "Could not parse --dgemm-rounds argument '%s': %s\n", optarg,
                 strerror(errno));
       }
       repeats = (unsigned)tmp;

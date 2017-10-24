@@ -524,7 +524,7 @@ static void SHA256_Init(int argc, char *argv[]) {
 
   static struct option longopts[] = {
       {"sha256-size", required_argument, NULL, 's'},
-      {"sha256-iterations", required_argument, NULL, 'i'},
+      {"sha256-rounds", required_argument, NULL, 'i'},
       {NULL, 0, NULL, 0}};
 
   while (1) {
@@ -545,7 +545,7 @@ static void SHA256_Init(int argc, char *argv[]) {
       iterations = strtoul(optarg, NULL, 0);
       if (errno == EINVAL || errno == ERANGE) {
         fprintf(stderr,
-                "Could not parse --sha256-iterations argument '%s': %s\n",
+                "Could not parse --sha256-rounds argument '%s': %s\n",
                 optarg, strerror(errno));
       }
     } break;
