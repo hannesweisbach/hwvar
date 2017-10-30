@@ -1,5 +1,6 @@
 #include <arch.h>
 
+#if 0
 static uint64_t timestamp() {
   uint64_t value;
   // Read CCNT Register
@@ -9,4 +10,4 @@ static uint64_t timestamp() {
 
 uint64_t arch_timestamp_begin(void) { return timestamp(); }
 uint64_t arch_timestamp_end(void) { return timestamp(); }
-
+#endif
