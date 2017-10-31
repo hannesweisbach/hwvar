@@ -23,7 +23,10 @@ static threads_t *spawn_workers(hwloc_topology_t topology,
     exit(EXIT_FAILURE);
   }
 
-  fprintf(stderr, "Spawning %d workers\n", hwloc_bitmap_weight(cpuset));
+  char *str;
+  hwloc_bitmap_asprintf(&str, cpuset);
+  fprintf(stderr, "Spawning %d workers: %s\n", hwloc_bitmap_weight(cpuset), str);
+  free(str);
 
   workers->threads =
       (thread_data_t *)malloc(sizeof(thread_data_t) * num_threads);
@@ -33,12 +36,12 @@ static threads_t *spawn_workers(hwloc_topology_t topology,
 
   // iterate over all cores and pick the ones in the cpuset
   hwloc_cpuset_t allocated = hwloc_bitmap_alloc();
-  for (unsigned i = 0; i < num_threads; ++i) {
+  for (unsigned pu = 0, i = 0; pu < num_threads; ++pu) {
     /* TODO Awesome:
      * If no object for that type exists, NULL is returned. If there
      * are several levels with objects of that type, NULL is returned and ther
      * caller may fallback to hwloc_get_obj_by_depth(). */
-    hwloc_obj_t obj = hwloc_get_obj_by_type(topology, HWLOC_OBJ_PU, i);
+    hwloc_obj_t obj = hwloc_get_obj_by_type(topology, HWLOC_OBJ_PU, pu);
     if (obj == NULL) {
       printf("Error getting obj. Implement fallback to "
              "hwloc_get_obj_by_depth()?\n");
@@ -62,19 +65,21 @@ static threads_t *spawn_workers(hwloc_topology_t topology,
     thread->thread_arg.work = NULL;
     thread->thread_arg.s = IDLE;
     thread->thread_arg.run = 1;
-    thread->thread_arg.dirigent = i == 0;
+    thread->thread_arg.dirigent = pu == 0;
     thread->thread_arg.thread = i;
     thread->thread_arg.cpu = obj->os_index;
     thread->thread_arg.topology = topology;
     thread->thread_arg.cpuset = tmp;
-    hwloc_bitmap_asprintf(&thread->thread_arg.cpuset_string, cpuset);
-    fprintf(stderr, "Found L:%u P:%u %s\n", obj->logical_index, obj->os_index,
-            thread->thread_arg.cpuset_string);
+    hwloc_bitmap_asprintf(&thread->thread_arg.cpuset_string, tmp);
+#if 0
+    fprintf(stderr, "Found L:%u P:%u %s %d\n", obj->logical_index, obj->os_index,
+            thread->thread_arg.cpuset_string, i);
+#endif
 
-    hwloc_bitmap_set(allocated, i);
+    hwloc_bitmap_set(allocated, obj->os_index);
     pthread_mutex_unlock(&thread->thread_arg.lock);
 
-    if (i > 0) {
+    if (pu > 0) {
       int err =
           pthread_create(&thread->thread, NULL, worker, &thread->thread_arg);
       if (err) {
@@ -83,6 +88,8 @@ static threads_t *spawn_workers(hwloc_topology_t topology,
         return NULL;
       }
     }
+
+    i = i + 1;
   }
 
   assert(hwloc_bitmap_weight(allocated) == hwloc_bitmap_weight(cpuset));
@@ -132,15 +139,13 @@ static int stop_single_worker(thread_data_t *thread, step_t *step) {
 static void stop_workers(threads_t *workers) {
   step_t *step = init_step(1);
 
-  unsigned int i;
   int err = 0;
-  hwloc_bitmap_foreach_begin(i, workers->cpuset) {
+  for (int i = 0; i < hwloc_bitmap_weight(workers->cpuset); ++i) {
     if (workers->threads[i].thread_arg.dirigent) { // skip dirigent
       continue;
     }
     err |= stop_single_worker(&workers->threads[i], step);
   }
-  hwloc_bitmap_foreach_end();
 
   if (!err) {
     // TODO cleanup.
