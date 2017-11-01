@@ -65,7 +65,7 @@ static threads_t *spawn_workers(hwloc_topology_t topology,
     thread->thread_arg.work = NULL;
     thread->thread_arg.s = IDLE;
     thread->thread_arg.run = 1;
-    thread->thread_arg.dirigent = pu == 0;
+    thread->thread_arg.dirigent = i == 0;
     thread->thread_arg.thread = i;
     thread->thread_arg.cpu = obj->os_index;
     thread->thread_arg.topology = topology;
@@ -79,7 +79,7 @@ static threads_t *spawn_workers(hwloc_topology_t topology,
     hwloc_bitmap_set(allocated, obj->os_index);
     pthread_mutex_unlock(&thread->thread_arg.lock);
 
-    if (pu > 0) {
+    if (i > 0) {
       int err =
           pthread_create(&thread->thread, NULL, worker, &thread->thread_arg);
       if (err) {
@@ -183,13 +183,11 @@ static void result_print(FILE *file, benchmark_result_t result,
 
 static benchmark_result_t run_in_parallel(threads_t *workers, benchmark_t *ops,
                                           const unsigned repetitions) {
-  int cpus = hwloc_bitmap_weight(workers->cpuset);
+  const int cpus = hwloc_bitmap_weight(workers->cpuset);
   benchmark_result_t result = result_alloc((unsigned)cpus, repetitions);
   step_t *step = init_step(cpus);
 
-  unsigned int cpu;
-  unsigned i = 0;
-  hwloc_bitmap_foreach_begin(cpu, workers->cpuset) {
+  for (int i = 0; i < cpus; ++i) {
     work_t *work = &step->work[i];
     work->ops = ops;
     work->arg = NULL;
@@ -199,37 +197,25 @@ static benchmark_result_t run_in_parallel(threads_t *workers, benchmark_t *ops,
 
     struct arg *arg = &workers->threads[i].thread_arg;
     queue_work(arg, work);
-    i = i + 1;
   }
-  hwloc_bitmap_foreach_end();
 
   // run dirigent
-  hwloc_bitmap_foreach_begin(i, workers->cpuset) {
-    if (workers->threads[i].thread_arg.dirigent/* &&
-        hwloc_bitmap_isset(cpuset, i)*/) {
-      worker(&workers->threads[i].thread_arg);
-      break;
-    }
-  }
-  hwloc_bitmap_foreach_end();
-
-  hwloc_bitmap_foreach_begin(i, workers->cpuset) {
+  assert(workers->threads[0].thread_arg.dirigent);
+  worker(&workers->threads[0].thread_arg);
+  for (int i = 1; i < cpus; ++i) {
     wait_until_done(&workers->threads[i].thread_arg);
   }
-  hwloc_bitmap_foreach_end();
 
   return result;
 }
 
 static benchmark_result_t run_one_by_one(threads_t *workers, benchmark_t *ops,
                                          unsigned repetitions) {
-  int cpus = hwloc_bitmap_weight(workers->cpuset);
+  const int cpus = hwloc_bitmap_weight(workers->cpuset);
   benchmark_result_t result = result_alloc((unsigned)cpus, repetitions);
   step_t *step = init_step(1);
 
-  unsigned int i = 0;
-  unsigned cpu;
-  hwloc_bitmap_foreach_begin(cpu, workers->cpuset) {
+  for (int i = 0; i < cpus; ++i) {
     work_t *work = &step->work[0];
     work->ops = ops;
     work->arg = NULL;
@@ -240,12 +226,11 @@ static benchmark_result_t run_one_by_one(threads_t *workers, benchmark_t *ops,
     struct arg *arg = &workers->threads[i].thread_arg;
     queue_work(arg, work);
     if (arg->dirigent) { // run dirigent
+      assert(i == 0);
       worker(arg);
     }
     wait_until_done(arg);
-    i = i + 1;
   }
-  hwloc_bitmap_foreach_end();
 
   return result;
 }
@@ -259,40 +244,29 @@ run_two_benchmarks(threads_t *workers, benchmark_t *ops1, benchmark_t *ops2,
   hwloc_bitmap_or(cpuset, set1, set2);
   hwloc_bitmap_and(cpuset, cpuset, workers->cpuset);
   assert(hwloc_bitmap_isincluded(cpuset, workers->cpuset));
-  int cpus = hwloc_bitmap_weight(cpuset);
+  const int cpus = hwloc_bitmap_weight(cpuset);
+  assert(cpus > 0);
   benchmark_result_t result = result_alloc((unsigned)cpus, repetitions);
   step_t *step = init_step(cpus);
 
-  unsigned int cpu;
-  unsigned i = 0;
-  hwloc_bitmap_foreach_begin(cpu, cpuset) {
+  for (int i = 0; i < cpus; ++i) {
+    struct arg *arg = &workers->threads[i].thread_arg;
     work_t *work = &step->work[i];
-    work->ops = hwloc_bitmap_isset(set1, cpu) ? ops1 : ops2;
+    work->ops = hwloc_bitmap_isset(set1, arg->cpu) ? ops1 : ops2;
     work->arg = NULL;
     work->barrier = &step->barrier;
     work->result = &result.data[i * repetitions];
     work->reps = repetitions;
 
-    struct arg *arg = &workers->threads[cpu].thread_arg;
     queue_work(arg, work);
-    i = i + 1;
   }
-  hwloc_bitmap_foreach_end();
 
   // run dirigent
-  hwloc_bitmap_foreach_begin(i, workers->cpuset) {
-    if (workers->threads[i].thread_arg.dirigent &&
-        hwloc_bitmap_isset(cpuset, i)) {
-      worker(&workers->threads[i].thread_arg);
-      break;
-    }
-  }
-  hwloc_bitmap_foreach_end();
-
-  hwloc_bitmap_foreach_begin(i, cpuset) {
+  assert(workers->threads[0].thread_arg.dirigent);
+  worker(&workers->threads[0].thread_arg);
+  for (int i = 1; i < cpus; ++i) {
     wait_until_done(&workers->threads[i].thread_arg);
   }
-  hwloc_bitmap_foreach_end();
 
   hwloc_bitmap_free(cpuset);
 
