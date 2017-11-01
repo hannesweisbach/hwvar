@@ -1,4 +1,4 @@
-SUBDIRS = platforms benchmarks arch
+SUBDIRS = platforms benchmarks
 AM_CFLAGS  = -D_GNU_SOURCE -Og -std=c11 -g
 #AM_CFLAGS += -fsanitize=undefined -fsanitize=thread
 AM_CFLAGS += -I $(top_srcdir)/include
@@ -11,5 +11,5 @@ libworker_a_SOURCES = worker.c
 
 bin_PROGRAMS = hwvar
 hwvar_SOURCES = main.c
-hwvar_LDADD = libworker.a libbarrier.a benchmarks/libbenchmarks.a arch/libarch.a platforms/libplatform.a
+hwvar_LDADD = libworker.a libbarrier.a benchmarks/libbenchmarks.a platforms/libplatform.a
 hwvar_LDFLAGS = -pthread

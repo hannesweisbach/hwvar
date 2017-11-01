@@ -23,27 +23,9 @@ case "${target_os}" in
         ;;
 esac
 
-build_x86_64=no
-build_aarch64=no
-
-case "${target_cpu}" in
-    x86_64*)
-        build_x86_64=yes
-        ;;
-    aarch64*)
-        build_aarch64=yes
-        ;;
-    *)
-        AC_MSG_ERROR(["CPU $target_cpu is not supported"])
-        ;;
-esac
-
 # Pass the conditionals to automake
 AM_CONDITIONAL([LINUX], [test "$build_linux" = "yes"])
 AM_CONDITIONAL([MACOS], [test "$build_macos" = "yes"])
-
-AM_CONDITIONAL([X86_64], [test "$build_x86_64" = "yes"])
-AM_CONDITIONAL([AARCH64], [test "$build_aarch64" = "yes"])
 
 AC_PROG_CC
 AC_PROG_RANLIB
@@ -77,7 +59,6 @@ AX_CHECK_COMPILE_FLAG([-Weverything], [CFLAGS="$CFLAGS -Weverything"])
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_FILES([Makefile
                  src/Makefile
-                 src/arch/Makefile
                  src/benchmarks/Makefile
                  src/platforms/Makefile])
 AC_OUTPUT
