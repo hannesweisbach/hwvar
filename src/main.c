@@ -396,13 +396,14 @@ int main(int argc, char *argv[]) {
       exit(EXIT_SUCCESS);
     case 'o':
       if (strcmp(optarg, "-") == 0) {
-        break;
+        /* stdout is the default */
       } else if (file_exists(optarg)) {
         fprintf(stderr, "File %s already exists.\n", optarg);
         exit(EXIT_FAILURE);
       } else {
         output = fopen(optarg, "w");
       }
+      break;
     case ':':
       break;
     default:
