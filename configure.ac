@@ -7,26 +7,6 @@ AM_INIT_AUTOMAKE([foreign])
 
 AC_CONFIG_MACRO_DIRS([m4])
 
-build_linux=no
-build_macos=no
-
-# Detect the target system
-case "${target_os}" in
-    linux*)
-        build_linux=yes
-        ;;
-    darwin*)
-        build_macos=yes
-        ;;
-    *)
-        AC_MSG_ERROR(["OS $target_os is not supported"])
-        ;;
-esac
-
-# Pass the conditionals to automake
-AM_CONDITIONAL([LINUX], [test "$build_linux" = "yes"])
-AM_CONDITIONAL([MACOS], [test "$build_macos" = "yes"])
-
 AC_PROG_CC
 AC_PROG_RANLIB
 
@@ -59,6 +39,6 @@ AX_CHECK_COMPILE_FLAG([-Weverything], [CFLAGS="$CFLAGS -Weverything"])
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_FILES([Makefile
                  src/Makefile
-                 src/benchmarks/Makefile
-                 src/platforms/Makefile])
+                 src/benchmarks/Makefile])
+
 AC_OUTPUT
