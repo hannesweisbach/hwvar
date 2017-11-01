@@ -472,11 +472,12 @@ int main(int argc, char *argv[]) {
     case ONE_BY_ONE:
       result = run_one_by_one(workers, benchmark, iterations);
       break;
-    case PAIR:
-      result = run_two_benchmarks(workers, benchmarks[i], benchmarks[i + 1],
+    case PAIR: {
+      const unsigned next = i + 1 < num_benchmarks ? i + 1 : i;
+      result = run_two_benchmarks(workers, benchmarks[i], benchmarks[next],
                                   cpuset1, cpuset2, iterations);
       i = i + 1;
-      break;
+    } break;
     case NR_POLICIES:
       exit(EXIT_FAILURE);
     }
