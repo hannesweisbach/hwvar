@@ -192,7 +192,7 @@ static benchmark_result_t run_in_parallel(threads_t *workers, benchmark_t *ops,
     work->ops = ops;
     work->arg = NULL;
     work->barrier = &step->barrier;
-    work->result = &result.data[i * repetitions];
+    work->result = &result.data[(unsigned)i * repetitions];
     work->reps = repetitions;
 
     struct arg *arg = &workers->threads[i].thread_arg;
@@ -220,7 +220,7 @@ static benchmark_result_t run_one_by_one(threads_t *workers, benchmark_t *ops,
     work->ops = ops;
     work->arg = NULL;
     work->barrier = &step->barrier;
-    work->result = &result.data[i * repetitions];
+    work->result = &result.data[(unsigned)i * repetitions];
     work->reps = repetitions;
 
     struct arg *arg = &workers->threads[i].thread_arg;
@@ -255,7 +255,7 @@ run_two_benchmarks(threads_t *workers, benchmark_t *ops1, benchmark_t *ops2,
     work->ops = hwloc_bitmap_isset(set1, arg->cpu) ? ops1 : ops2;
     work->arg = NULL;
     work->barrier = &step->barrier;
-    work->result = &result.data[i * repetitions];
+    work->result = &result.data[(unsigned)i * repetitions];
     work->reps = repetitions;
 
     queue_work(arg, work);
