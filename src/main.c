@@ -524,7 +524,8 @@ int main(int argc, char *argv[]) {
     case 'p':
       if (strcmp(optarg, "parallel") == 0) {
         policy = PARALLEL;
-      } else if (strcmp(optarg, "onebyone") == 0) {
+      } else if ((strcmp(optarg, "onebyone") == 0) ||
+                 (strcmp(optarg, "one-by-one") == 0)) {
         policy = ONE_BY_ONE;
       } else if (strcmp(optarg, "pair") == 0) {
         policy = PAIR;
