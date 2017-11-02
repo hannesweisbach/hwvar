@@ -475,7 +475,7 @@ int main(int argc, char *argv[]) {
 
   enum policy { PARALLEL, ONE_BY_ONE, PAIR, NR_POLICIES };
 
-  enum policy policy = PARALLEL;
+  enum policy policy = ONE_BY_ONE;
   char *opt_benchmarks = NULL;
   unsigned iterations = 10;
   uint64_t size = l1.size;
