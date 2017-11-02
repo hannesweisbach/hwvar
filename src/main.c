@@ -1,5 +1,7 @@
+#include <ctype.h>
 #include <getopt.h>
 #include <inttypes.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
@@ -99,6 +101,24 @@ static threads_t *spawn_workers(hwloc_topology_t topology,
   return workers;
 }
 
+static struct hwloc_cache_attr_s l1_attributes(hwloc_topology_t topology) {
+  const int depth = hwloc_get_type_or_below_depth(topology, HWLOC_OBJ_PU);
+  if (depth < 0) {
+    fprintf(stderr, "Error finding PU\n");
+    exit(EXIT_FAILURE);
+  }
+  hwloc_obj_t obj = hwloc_get_obj_by_depth(topology, (unsigned)depth, 0);
+  /* Discover cache line size */
+  hwloc_obj_t cache = hwloc_get_cache_covering_cpuset(topology, obj->cpuset);
+  assert(cache != NULL);
+  assert(cache->type == HWLOC_OBJ_CACHE);
+  assert(cache->attr->cache.depth == 1);
+  fprintf(stderr, "[L1] size: %" PRIu64 ", line size: %u\n",
+          cache->attr->cache.size, cache->attr->cache.linesize);
+
+  return cache->attr->cache;
+}
+
 #include <benchmark.h>
 
 static void *stop_thread(void *arg_) {
@@ -108,7 +128,8 @@ static void *stop_thread(void *arg_) {
 }
 
 static int stop_single_worker(thread_data_t *thread, step_t *step) {
-  benchmark_t stop_ops = {"stop", NULL, NULL, NULL, NULL, stop_thread, NULL};
+  benchmark_t stop_ops = {"stop", NULL,        NULL, NULL,
+                          NULL,   stop_thread, NULL, {0, 0, 0}};
 
   step->work->ops = &stop_ops;
   step->work->arg = &thread->thread_arg;
@@ -273,6 +294,131 @@ run_two_benchmarks(threads_t *workers, benchmark_t *ops1, benchmark_t *ops2,
   return result;
 }
 
+/**
+ * Calculate input size of a benchmark.
+ *
+ * Calculates the input size of a benchmark, such that the cache is 90% full,
+ * with the intention of leaving some space for stack, etc … in the cache. At
+ * the same time, the routine calculates the benchmark size such that an integer
+ * number of cache lines are used.
+ * As a diagnostic the calculated number of bytes and the fill level of the
+ * cache are printed.
+ *
+ * @param name name of the benchmark
+ * @param cache_size  total cache size
+ * @param cache_line_size size of a cache line
+ * @param power power with which the size argument goes into the memory
+ *              requirement of the benchmark, i.e. 1 for vectors, 2 for square
+ *              matrices.
+ * @param data_size sizeof() of the data type used by the benchmark.
+ * @param datasets number of datasets used by the benchmark, i.e. number of
+ *                  vectors, matrices, …
+ **/
+static unsigned tune_size(const char *const name, const uint64_t cache_size,
+                          const unsigned cache_line_size,
+                          const unsigned data_size, const uint16_t power,
+                          const uint16_t datasets) {
+  const double cache_size_ = cache_size * 0.9;
+  const double elems_per_set = cache_size_ / datasets / data_size;
+  const double elems_per_dim = pow(elems_per_set, 1.0 / power);
+  const unsigned num_lines =
+      ((unsigned)elems_per_dim / (cache_line_size / data_size));
+  const unsigned bytes_per_dim_aligned = num_lines * cache_line_size;
+  const unsigned n = bytes_per_dim_aligned / data_size;
+  const double bytes = pow(n, power) * data_size * datasets;
+  const double p = bytes * 100.0 / cache_size;
+
+  fprintf(stderr, "[Cache] --%s-size=%u requires %u bytes of %"PRIu64"k (%5.1f%%)\n",
+          name, n, (unsigned)bytes, cache_size / 1024, p);
+  return n;
+}
+
+static uint64_t get_time() {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+
+  return (uint64_t)ts.tv_sec * 1000 * 1000 * 1000 + (uint64_t)ts.tv_nsec;
+}
+
+/**
+ * Tune the rounds parameter such that a pre-defined benchmark runtime is
+ * achieved.
+ *
+ * Assumes, that the benchmark is configured for the desired size.
+ *
+ * @param benchmark the benchmark to tune
+ * @param target_seconds the target runtime in seconds
+ * @param init_rounds the rounds-parameter the benchmark was initialized with
+ **/
+static unsigned tune_time(benchmark_t *benchmark, const uint64_t target_seconds,
+                          const unsigned init_rounds) {
+  void *benchmark_arg =
+      (benchmark->init_arg) ? benchmark->init_arg(NULL) : NULL;
+  const uint64_t start = get_time();
+  unsigned rep;
+  for (rep = 0; get_time() < start + 1000 * 1000 * 1000UL; ++rep) {
+    if (benchmark->reset_arg) {
+      benchmark->reset_arg(benchmark_arg);
+    }
+    benchmark->call(benchmark_arg);
+  }
+  const uint64_t end = get_time();
+  const uint64_t duration = end - start;
+
+  const double rounds = (target_seconds * 1e9 * rep * init_rounds) / duration;
+  const double rounds_i = nearbyint(rounds);
+  assert(rounds <= UINT_MAX);
+  const double runtime = rounds_i / rep * duration / 1e9 / init_rounds;
+
+  fprintf(stderr, "[Time] --%s-rounds=%u (~%4.1fs)\n", benchmark->name,
+          (unsigned)rounds, runtime);
+
+  return (unsigned)rounds;
+}
+
+static void tune_benchmarks_size(benchmark_t **benchmarks,
+                                 const unsigned num_benchmarks,
+                                 const uint64_t cache_size,
+                                 const unsigned cache_line_size, char **argv) {
+  for (unsigned i = 0; i < num_benchmarks; ++i) {
+    tuning_param_t *p = &benchmarks[i]->params;
+    const char *name = benchmarks[i]->name;
+    const unsigned n = tune_size(name, cache_size, cache_line_size,
+                                 p->data_size, p->power, p->datasets);
+    asprintf(&argv[i], "--%s-size=%u ", name, n);
+  }
+
+  fprintf(stderr, "[Cache] ");
+  for (unsigned i = 0; i < num_benchmarks; ++i) {
+    fprintf(stderr, "%s ", argv[i]);
+  }
+  fprintf(stderr, "\n");
+}
+
+static void tune_benchmarks_time(benchmark_t **benchmarks,
+                                 const unsigned num_benchmarks,
+                                 const uint64_t time, char **argv,
+                                 unsigned argc) {
+  const unsigned rounds = 10;
+  for (unsigned i = 0; i < num_benchmarks; ++i) {
+    asprintf(&argv[argc + i], "--%s-rounds=%u", benchmarks[i]->name, rounds);
+  }
+
+  init_benchmarks((int)(argc + num_benchmarks), argv);
+
+  for (unsigned i = 0; i < num_benchmarks; ++i) {
+    free(argv[argc + i]);
+    asprintf(&argv[argc + i], "--%s-rounds=%u", benchmarks[i]->name,
+             tune_time(benchmarks[i], time, rounds));
+  }
+
+  fprintf(stderr, "[Time] ");
+  for (unsigned i = 0; i < num_benchmarks; ++i) {
+    fprintf(stderr, "%s ", argv[argc + i]);
+  }
+  fprintf(stderr, "\n");
+}
+
 static int file_exists(const char *restrict name) {
   struct stat tmp;
   int err = stat(name, &tmp);
@@ -289,6 +435,22 @@ static unsigned count_chars(const char *str, char c) {
     }
   }
   return chars;
+}
+
+static unsigned si_suffix_to_factor(int suffix) {
+  switch (tolower(suffix)) {
+  case '\0':
+    return 1;
+  case 'k':
+    return 1024;
+  case 'm':
+    return 1024 * 1024;
+  case 'g':
+    return 1024 * 1024 * 1024;
+  default:
+    fprintf(stderr, "'%c' is not a valid suffix.\n", suffix);
+    exit(EXIT_FAILURE);
+  }
 }
 
 int main(int argc, char *argv[]) {
@@ -309,13 +471,18 @@ int main(int argc, char *argv[]) {
     hwloc_topology_restrict(topology, restricted, 0);
   }
 
+  struct hwloc_cache_attr_s l1 = l1_attributes(topology);
+
   enum policy { PARALLEL, ONE_BY_ONE, PAIR, NR_POLICIES };
 
   enum policy policy = PARALLEL;
-  benchmark_t **benchmarks = NULL;
-  unsigned num_benchmarks = 0;
+  char *opt_benchmarks = NULL;
   unsigned iterations = 10;
+  uint64_t size = l1.size;
+  uint64_t time = 20;
   FILE *output = stdout;
+  static int auto_tune = 0;
+  static int tune = 0;
   hwloc_cpuset_t cpuset1 = hwloc_bitmap_alloc();
   hwloc_cpuset_t cpuset2 = hwloc_bitmap_alloc();
   hwloc_cpuset_t runset = hwloc_bitmap_alloc();
@@ -328,12 +495,16 @@ int main(int argc, char *argv[]) {
       {"output", required_argument, NULL, 'o'},
       {"cpuset-1", required_argument, NULL, 1},
       {"cpuset-2", required_argument, NULL, 2},
+      {"size", required_argument, NULL, 's'},
+      {"time", required_argument, NULL, 't'},
+      {"tune", no_argument, &tune, 1},
+      {"auto", no_argument, &auto_tune, 1},
       {NULL, 0, NULL, 0}};
 
   opterr = 0;
 
   while (1) {
-    int c = getopt_long(argc, argv, "p:b:i:lo:", options, NULL);
+    int c = getopt_long(argc, argv, "p:b:i:lo:s:", options, NULL);
     if (c == -1)
       break;
     errno = 0;
@@ -363,26 +534,9 @@ int main(int argc, char *argv[]) {
       }
       break;
     case 'b':
-      num_benchmarks = count_chars(optarg, ',') + 1;
-      benchmarks =
-          (benchmark_t **)malloc(sizeof(benchmark_t *) * num_benchmarks);
-      if (benchmarks == NULL) {
-        fprintf(stderr, "Error allocating memory");
-        exit(EXIT_FAILURE);
-      }
-      char *arg = strtok(optarg, ",");
-      unsigned i = 0;
-      for (i = 0; arg != NULL && i < num_benchmarks; ++i) {
-        benchmarks[i] = get_benchmark(arg);
-        if (benchmarks[i] == NULL) {
-          fprintf(stderr, "Benchmark %s unknown. Skipping.\n", arg);
-          --i;
-        }
-        arg = strtok(NULL, ",");
-      }
-      num_benchmarks = i;
+      opt_benchmarks = optarg;
       break;
-    case 'i':
+    case 'i': {
       errno = 0;
       unsigned long tmp = strtoul(optarg, NULL, 0);
       if (errno == EINVAL || errno == ERANGE || tmp > UINT_MAX) {
@@ -390,7 +544,7 @@ int main(int argc, char *argv[]) {
                 optarg, strerror(errno));
       }
       iterations = (unsigned)tmp;
-      break;
+    } break;
     case 'l':
       list_benchmarks();
       exit(EXIT_SUCCESS);
@@ -404,6 +558,29 @@ int main(int argc, char *argv[]) {
         output = fopen(optarg, "w");
       }
       break;
+    case 's': {
+      errno = 0;
+      char *suffix = NULL;
+      unsigned long tmp = strtoul(optarg, &suffix, 0);
+      if (errno == EINVAL || errno == ERANGE) {
+        fprintf(stderr, "Could not parse --iterations argument '%s': %s\n",
+                optarg, strerror(errno));
+      }
+      size = tmp;
+      if (suffix != NULL) {
+        size *= si_suffix_to_factor(*suffix);
+      }
+    } break;
+    case 't': {
+      errno = 0;
+      char *suffix = NULL;
+      unsigned long tmp = strtoul(optarg, &suffix, 0);
+      if (errno == EINVAL || errno == ERANGE) {
+        fprintf(stderr, "Could not parse --iterations argument '%s': %s\n",
+                optarg, strerror(errno));
+      }
+      time = tmp;
+    } break;
     case ':':
       break;
     default:
@@ -411,10 +588,62 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  assert((benchmarks == NULL) == (num_benchmarks == 0));
-
+  unsigned num_benchmarks = opt_benchmarks == NULL
+                                ? number_benchmarks()
+                                : count_chars(optarg, ',') + 1;
+  benchmark_t **benchmarks =
+      (benchmark_t **)malloc(sizeof(benchmark_t *) * num_benchmarks);
   if (benchmarks == NULL) {
-    list_benchmarks();
+    fprintf(stderr, "Error allocating memory");
+    exit(EXIT_FAILURE);
+  }
+
+  if (opt_benchmarks != NULL) {
+    char *arg = strtok(optarg, ",");
+    unsigned i = 0;
+    for (i = 0; arg != NULL && i < num_benchmarks; ++i) {
+      benchmarks[i] = get_benchmark_name(arg);
+      if (benchmarks[i] == NULL) {
+        fprintf(stderr, "Benchmark %s unknown. Skipping.\n", arg);
+        --i;
+      }
+      arg = strtok(NULL, ",");
+    }
+    num_benchmarks = i;
+  } else {
+    for (unsigned i = 0; i < num_benchmarks; ++i) {
+      benchmarks[i] = get_benchmark_idx(i);
+    }
+  }
+
+  if (tune) {
+    char **myargv = (char **)malloc(sizeof(char *) * (num_benchmarks * 2));
+    fprintf(stderr, "Tuning size parameter:\n");
+    tune_benchmarks_size(benchmarks, num_benchmarks, size, l1.linesize, myargv);
+    fprintf(stderr, "Tuning rounds parameter:\n");
+    tune_benchmarks_time(benchmarks, num_benchmarks, time, myargv,
+                         num_benchmarks);
+    for (unsigned i = 0; i < num_benchmarks * 2; ++i) {
+      free(myargv[i]);
+    }
+    free(myargv);
+    exit(EXIT_SUCCESS);
+  }
+
+  if (auto_tune) {
+    /* alloc space for input argv + *-size= and *-rounds= parameters */
+    unsigned idx = (unsigned)argc;
+    char **myargv =
+        (char **)malloc(sizeof(char *) * (num_benchmarks * 2 + idx));
+    memcpy(myargv, argv, idx * sizeof(char *));
+    tune_benchmarks_size(benchmarks, num_benchmarks, size, l1.linesize,
+                         &myargv[idx]);
+    idx += num_benchmarks;
+
+    tune_benchmarks_time(benchmarks, num_benchmarks, time, myargv, idx);
+    init_benchmarks((int)(idx + num_benchmarks), myargv);
+  } else {
+    init_benchmarks(argc, argv);
   }
 
   if (policy >= NR_POLICIES) {
@@ -455,8 +684,6 @@ int main(int argc, char *argv[]) {
 
   assert((policy == PAIR) == !hwloc_bitmap_iszero(cpuset2));
   hwloc_bitmap_or(runset, cpuset1, cpuset2);
-
-  init_benchmarks(argc, argv);
 
   threads_t *workers = spawn_workers(topology, runset);
 

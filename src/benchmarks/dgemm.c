@@ -158,13 +158,15 @@ static void *call_work(void *arg_) {
   return NULL;
 }
 
-benchmark_t dgemm_ops = {.name = "dgemm",
-                         .init = dgemm_init,
-                         .init_arg = init_argument,
-                         .reset_arg = NULL,
-                         .free_arg = destroy_argument,
-                         .call = call_work,
-                         .state = NULL};
+benchmark_t dgemm_ops = {
+    .name = "dgemm",
+    .init = dgemm_init,
+    .init_arg = init_argument,
+    .reset_arg = NULL,
+    .free_arg = destroy_argument,
+    .call = call_work,
+    .state = NULL,
+    .params = {.data_size = sizeof(double), .datasets = 3, .power = 2}};
 
 #if 0
 double init_and_do_dgemm(

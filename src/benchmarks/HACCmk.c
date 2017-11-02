@@ -223,11 +223,13 @@ static void *HACCmk_work(void *arg_) {
   return NULL;
 }
 
-benchmark_t HACCmk_ops = {.name = "HACCmk",
-                          .init = HACCmk_init,
-                          .init_arg = HACCmk_argument_init,
-                          .reset_arg = NULL,
-                          .free_arg = HACCmk_argument_destroy,
-                          .call = HACCmk_work,
-                          .state = NULL};
+benchmark_t HACCmk_ops = {
+    .name = "HACCmk",
+    .init = HACCmk_init,
+    .init_arg = HACCmk_argument_init,
+    .reset_arg = NULL,
+    .free_arg = HACCmk_argument_destroy,
+    .call = HACCmk_work,
+    .state = NULL,
+    .params = {.data_size = sizeof(float), .datasets = 7, .power = 1}};
 

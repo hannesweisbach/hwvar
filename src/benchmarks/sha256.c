@@ -591,11 +591,13 @@ static void *SHA256_call(void *arg_) {
   return NULL;
 }
 
-benchmark_t SHA256 = {"sha256",
-                      SHA256_Init,
-                      SHA256_argument_init,
-                      NULL,
-                      SHA256_argument_destroy,
-                      SHA256_call,
-                      NULL};
+benchmark_t SHA256 = {
+    "sha256",
+    SHA256_Init,
+    SHA256_argument_init,
+    NULL,
+    SHA256_argument_destroy,
+    SHA256_call,
+    NULL,
+    .params = {.data_size = sizeof(char), .datasets = 1, .power = 1}};
 

@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <getopt.h>
 #include <stdio.h>
 #include <string.h>
@@ -13,7 +14,7 @@ static benchmark_t *benchmarks[] = {&dgemm_ops,    &HACCmk_ops, &STREAM_Copy,
                                     &STREAM_Scale, &STREAM_Add, &STREAM_Triad,
                                     &STREAM,       &SHA256};
 
-static unsigned number_benchmarks() {
+unsigned number_benchmarks() {
   return sizeof(benchmarks) / sizeof(benchmark_t *);
 }
 
@@ -29,7 +30,7 @@ void init_benchmarks(const int argc, char *argv[]) {
   }
 }
 
-benchmark_t *get_benchmark(const char *const name) {
+benchmark_t *get_benchmark_name(const char *const name) {
   unsigned num_benchmarks = number_benchmarks();
 
   for (unsigned i = 0; i < num_benchmarks; ++i) {
@@ -40,6 +41,11 @@ benchmark_t *get_benchmark(const char *const name) {
     }
   }
   return NULL;
+}
+
+benchmark_t *get_benchmark_idx(const unsigned idx) {
+  assert(idx < number_benchmarks());
+  return benchmarks[idx];
 }
 
 void list_benchmarks() {
