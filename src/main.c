@@ -600,7 +600,7 @@ int main(int argc, char *argv[]) {
   }
 
   if (opt_benchmarks != NULL) {
-    char *arg = strtok(optarg, ",");
+    char *arg = strtok(opt_benchmarks, ",");
     unsigned i = 0;
     for (i = 0; arg != NULL && i < num_benchmarks; ++i) {
       benchmarks[i] = get_benchmark_name(arg);
