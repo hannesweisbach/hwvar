@@ -90,7 +90,7 @@ static void HACCmk_init(int argc, char *argv[]) {
       {NULL, 0, NULL, 0}};
 
   while (1) {
-    int c = getopt_long(argc, argv, "-N:r:", longopts, NULL);
+    int c = getopt_long(argc, argv, "-", longopts, NULL);
     if (c == -1)
       break;
     errno = 0;

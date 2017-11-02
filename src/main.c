@@ -377,28 +377,27 @@ static unsigned tune_time(benchmark_t *benchmark, const uint64_t target_seconds,
 }
 
 static void tune_benchmarks_size(benchmark_t **benchmarks,
-                                 const unsigned num_benchmarks,
-                                 const uint64_t cache_size,
-                                 const unsigned cache_line_size, char **argv) {
+                                 const unsigned num_benchmarks, char **argv,
+                                 const unsigned argc, const uint64_t cache_size,
+                                 const unsigned cache_line_size) {
   for (unsigned i = 0; i < num_benchmarks; ++i) {
     tuning_param_t *p = &benchmarks[i]->params;
     const char *name = benchmarks[i]->name;
     const unsigned n = tune_size(name, cache_size, cache_line_size,
                                  p->data_size, p->power, p->datasets);
-    asprintf(&argv[i], "--%s-size=%u ", name, n);
+    asprintf(&argv[argc + i], "--%s-size=%u", name, n);
   }
 
   fprintf(stderr, "[Cache] ");
   for (unsigned i = 0; i < num_benchmarks; ++i) {
-    fprintf(stderr, "%s ", argv[i]);
+    fprintf(stderr, "%s ", argv[argc + i]);
   }
   fprintf(stderr, "\n");
 }
 
 static void tune_benchmarks_time(benchmark_t **benchmarks,
-                                 const unsigned num_benchmarks,
-                                 const uint64_t time, char **argv,
-                                 unsigned argc) {
+                                 const unsigned num_benchmarks, char *argv[],
+                                 const unsigned argc, const uint64_t time) {
   const unsigned rounds = 10;
   for (unsigned i = 0; i < num_benchmarks; ++i) {
     asprintf(&argv[argc + i], "--%s-rounds=%u", benchmarks[i]->name, rounds);
@@ -504,7 +503,7 @@ int main(int argc, char *argv[]) {
   opterr = 0;
 
   while (1) {
-    int c = getopt_long(argc, argv, "p:b:i:lo:s:", options, NULL);
+    int c = getopt_long(argc, argv, "p:b:i:lo:s:t:", options, NULL);
     if (c == -1)
       break;
     errno = 0;
@@ -618,13 +617,15 @@ int main(int argc, char *argv[]) {
   }
 
   if (tune) {
-    char **myargv = (char **)malloc(sizeof(char *) * (num_benchmarks * 2));
+    const unsigned num_args = num_benchmarks * 2 + 1;
+    char **myargv = (char **)malloc(sizeof(char *) * num_args);
+    myargv[0] = ""; // the first arg for getopt to skip over.
     fprintf(stderr, "Tuning size parameter:\n");
-    tune_benchmarks_size(benchmarks, num_benchmarks, size, l1.linesize, myargv);
+    tune_benchmarks_size(benchmarks, num_benchmarks, myargv, 1, size, l1.linesize );
     fprintf(stderr, "Tuning rounds parameter:\n");
-    tune_benchmarks_time(benchmarks, num_benchmarks, time, myargv,
-                         num_benchmarks);
-    for (unsigned i = 0; i < num_benchmarks * 2; ++i) {
+    tune_benchmarks_time(benchmarks, num_benchmarks, myargv, num_benchmarks + 1,
+                         time);
+    for (unsigned i = 1; i < num_args; ++i) {
       free(myargv[i]);
     }
     free(myargv);
@@ -634,15 +635,19 @@ int main(int argc, char *argv[]) {
   if (auto_tune) {
     /* alloc space for input argv + *-size= and *-rounds= parameters */
     unsigned idx = (unsigned)argc;
-    char **myargv =
-        (char **)malloc(sizeof(char *) * (num_benchmarks * 2 + idx));
+    const unsigned num_args = num_benchmarks * 2 + idx;
+    char **myargv = (char **)malloc(sizeof(char *) * num_args);
     memcpy(myargv, argv, idx * sizeof(char *));
-    tune_benchmarks_size(benchmarks, num_benchmarks, size, l1.linesize,
-                         &myargv[idx]);
+    tune_benchmarks_size(benchmarks, num_benchmarks, myargv, idx, size,
+                         l1.linesize);
     idx += num_benchmarks;
 
-    tune_benchmarks_time(benchmarks, num_benchmarks, time, myargv, idx);
+    tune_benchmarks_time(benchmarks, num_benchmarks, myargv, idx, time);
     init_benchmarks((int)(idx + num_benchmarks), myargv);
+    for (unsigned i = (unsigned)argc; i < num_args; ++i) {
+      free(myargv[i]);
+    }
+    free(myargv);
   } else {
     init_benchmarks(argc, argv);
   }
