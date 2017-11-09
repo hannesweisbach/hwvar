@@ -198,10 +198,10 @@ static int parse_int(const char *opt, const char *name) {
 
 static void STREAM_Init(int argc, char *argv[]) {
   static struct option longopts[] = {
-      {"STREAM-Copy-rounds", required_argument, NULL, 0},
-      {"STREAM-Scale-rounds", required_argument, NULL, 1},
-      {"STREAM-Add-rounds", required_argument, NULL, 2},
-      {"STREAM-Triad-rounds", required_argument, NULL, 3},
+      {"STREAM_Copy-rounds", required_argument, NULL, 0},
+      {"STREAM_Scale-rounds", required_argument, NULL, 1},
+      {"STREAM_Add-rounds", required_argument, NULL, 2},
+      {"STREAM_Triad-rounds", required_argument, NULL, 3},
       {"STREAM-rounds", required_argument, NULL, 4},
       {"STREAM-size", required_argument, NULL, 's'},
       {NULL, 0, NULL, 0}};
