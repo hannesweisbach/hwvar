@@ -17,16 +17,21 @@ typedef uint32_t ulong32;
    #define MIN(x, y) ( ((x)<(y))?(x):(y) )
 #endif
 
+#if defined(__BYTE_ORDER__) && ((__BYTE_ORDER__) == (__ORDER_LITTLE_ENDIAN__))
+#define BSWAP32(x) __builtin_bswap32((x))
+#else
+#define BSWAP32(x) (x)
+#endif
 
 #define LOAD32H(x, y)                                                          \
   do {                                                                         \
     memcpy(&(x), (y), 4);                                                      \
-    (x) = __builtin_bswap32((x));                                              \
+    (x) = BSWAP32((x));                                                        \
   } while (0)
 
 #define STORE32H(x, y)                                                         \
   do {                                                                         \
-    ulong32 __t = __builtin_bswap32((x));                                      \
+    ulong32 __t = BSWAP32((x));                                                \
     memcpy((y), &__t, 4);                                                      \
   } while (0)
 
