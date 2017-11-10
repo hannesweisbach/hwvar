@@ -116,9 +116,7 @@ void *worker(void *arg_) {
       perror("barrier");
     }
 
-    // warm-up
-    work->ops->call(benchmark_arg);
-
+    // reps = warm-up + benchmark runs.
     for (unsigned rep = 0; rep < work->reps; ++rep) {
       if (work->ops->reset_arg) {
         work->ops->reset_arg(benchmark_arg);

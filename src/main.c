@@ -476,7 +476,7 @@ int main(int argc, char *argv[]) {
 
   enum policy policy = ONE_BY_ONE;
   char *opt_benchmarks = NULL;
-  unsigned iterations = 10;
+  unsigned iterations = 13;
   uint64_t size = l1.size;
   uint64_t time = 20;
   FILE *output = stdout;
