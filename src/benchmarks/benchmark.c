@@ -9,10 +9,11 @@
 #include "HACCmk.h"
 #include "stream.h"
 #include "sha256.h"
+#include "fwq.h"
 
 static benchmark_t *benchmarks[] = {&dgemm_ops,    &HACCmk_ops, &STREAM_Copy,
                                     &STREAM_Scale, &STREAM_Add, &STREAM_Triad,
-                                    &STREAM,       &SHA256};
+                                    &STREAM,       &SHA256,     &fwq_ops};
 
 unsigned number_benchmarks() {
   return sizeof(benchmarks) / sizeof(benchmark_t *);
