@@ -1,0 +1,2 @@
+#cmakedefine HAVE_SCHED_H
+#cmakedefine HAVE_PTHREAD_BARRIER_T
