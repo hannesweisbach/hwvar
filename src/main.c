@@ -350,7 +350,7 @@ static uint64_t get_time() {
  * @param target_seconds the target runtime in seconds
  * @param init_rounds the rounds-parameter the benchmark was initialized with
  **/
-static unsigned tune_time(benchmark_t *benchmark, const uint64_t target_seconds,
+static unsigned tune_time(benchmark_t *benchmark, const double target_seconds,
                           const unsigned init_rounds) {
   void *benchmark_arg =
       (benchmark->init_arg) ? benchmark->init_arg(NULL) : NULL;
@@ -397,7 +397,7 @@ static void tune_benchmarks_size(benchmark_t **benchmarks,
 
 static void tune_benchmarks_time(benchmark_t **benchmarks,
                                  const unsigned num_benchmarks, char *argv[],
-                                 const unsigned argc, const uint64_t time) {
+                                 const unsigned argc, const double time) {
   const unsigned rounds = 10;
   for (unsigned i = 0; i < num_benchmarks; ++i) {
     asprintf(&argv[argc + i], "--%s-rounds=%u", benchmarks[i]->name, rounds);
@@ -478,7 +478,7 @@ int main(int argc, char *argv[]) {
   char *opt_benchmarks = NULL;
   unsigned iterations = 13;
   uint64_t size = l1.size;
-  uint64_t time = 20;
+  double time = 20;
   FILE *output = stdout;
   static int auto_tune = 0;
   static int tune = 0;
@@ -574,12 +574,11 @@ int main(int argc, char *argv[]) {
     case 't': {
       errno = 0;
       char *suffix = NULL;
-      unsigned long tmp = strtoul(optarg, &suffix, 0);
-      if (errno == EINVAL || errno == ERANGE) {
+      time = strtod(optarg, &suffix);
+      if (errno == ERANGE || time == 0.0 || isnan(time) || isinf(time)) {
         fprintf(stderr, "Could not parse --iterations argument '%s': %s\n",
                 optarg, strerror(errno));
       }
-      time = tmp;
     } break;
     case ':':
       break;
