@@ -78,7 +78,9 @@ static void return_finished_work(struct arg *arg, work_t *work) {
 
 static uint64_t get_time() {
   struct timespec ts;
+#ifdef HAVE_CLOCK_GETTIME
   clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+#endif
 
   return (uint64_t)ts.tv_sec * 1000 * 1000 * 1000 + (uint64_t)ts.tv_nsec;
 }

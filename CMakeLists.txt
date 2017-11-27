@@ -23,11 +23,21 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_SOURCE_DIR}/cmake)
 
 include(CheckIncludeFiles)
 include(CheckTypeSize)
+include(CheckFunctionExists)
 
 check_include_files(sched.h HAVE_SCHED_H)
 check_type_size(pthread_barrier_t HAVE_PTHREAD_BARRIER_T LANGUAGE C)
 
 find_package(HWLOC REQUIRED)
+
+check_library_exists("rt" clock_gettime "" HAVE_LIBRT)
+if(HAVE_LIBRT)
+  find_library(LIBRT_LIBRARIES rt)
+  set(HAVE_CLOCK_GETTIME ON)
+else()
+  # Under macOS and glibc > 2.16 clock_gettime does not need -lrt
+  check_function_exists(clock_gettime HAVE_CLOCK_GETTIME)
+endif()
 
 include_directories(include ${CMAKE_CURRENT_BINARY_DIR})
 
