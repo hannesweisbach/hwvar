@@ -76,11 +76,5 @@ static void *hpccg_work(void *arg_) {
 }
 
 benchmark_t hpccg_ops = {
-    .name = "hpccg",
-    .init = hpccg_init,
-    .init_arg = init_argument,
-    .reset_arg = NULL,
-    .free_arg = NULL,
-    .call = hpccg_work,
-    .state = NULL,
-    .params = {.data_size = sizeof(double), .datasets = 63, .power = 3}};
+    "hpccg", hpccg_init, init_argument, NULL,
+    NULL,    hpccg_work, NULL,          {sizeof(double), 63, 3}};
