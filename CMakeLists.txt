@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.11)
-project(HWPErfVar C)
+project(HWPErfVar C CXX)
 
 if ("${CMAKE_VERSION}" VERSION_EQUAL "3.1" OR
     "${CMAKE_VERSION}" VERSION_GREATER "3.1")

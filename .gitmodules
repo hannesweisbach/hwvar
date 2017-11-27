@@ -1,0 +1,4 @@
+[submodule "src/benchmarks/HPCCG"]
+	path = src/benchmarks/HPCCG
+	url = git@github.com:hannesweisbach/HPCCG.git
+	branch = hwperfvar
