@@ -257,7 +257,7 @@ struct minife_args {
         local_box_(local_box(nprocs, myproc, global_box, local_boxes)),
         mesh(global_box_, local_box_), A(make_matrix(mesh)),
         b(first_row(A), A.rows.size()), x(first_row(A), A.rows.size()) {
-
+#if 0
     GlobalOrdinal nrows = A.rows.size();
     double nnz = A.num_nonzeros();
 
@@ -276,6 +276,7 @@ struct minife_args {
     std::cout << vec_size << " bytes for Vectors" << std::endl;
     std::cout << tmp_size << " bytes for temporaries" << std::endl;
     std::cout << "Sum: " << num_bytes + vec_size + tmp_size << std::endl;
+#endif
   }
 };
 
@@ -311,7 +312,6 @@ static void minife_init(int argc, char *argv[]) {
   params.nx = 4;
   params.ny = 4;
   params.nz = 3;
-  std::cout << params.nx << " " << params.ny << " " << params.nz << std::endl;
 }
 
 static void *init_argument(void *) {
