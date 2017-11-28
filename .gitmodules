@@ -2,3 +2,7 @@
 	path = src/benchmarks/HPCCG
 	url = git@github.com:hannesweisbach/HPCCG.git
 	branch = hwperfvar
+[submodule "src/benchmarks/MiniFE"]
+	path = src/benchmarks/MiniFE
+	url = git@github.com:hannesweisbach/MiniFE.git
+	branch = hwperfvar

@@ -11,10 +11,12 @@
 #include "sha256.h"
 #include "fwq.h"
 #include "hpccg.h"
+#include "minife.h"
 
-static benchmark_t *benchmarks[] = {
-    &dgemm_ops,    &HACCmk_ops, &STREAM_Copy, &STREAM_Scale, &STREAM_Add,
-    &STREAM_Triad, &STREAM,     &SHA256,      &fwq_ops,      &hpccg_ops};
+static benchmark_t *benchmarks[] = {&dgemm_ops,    &HACCmk_ops, &STREAM_Copy,
+                                    &STREAM_Scale, &STREAM_Add, &STREAM_Triad,
+                                    &STREAM,       &SHA256,     &fwq_ops,
+                                    &hpccg_ops,    &minife_ops};
 
 unsigned number_benchmarks() {
   return sizeof(benchmarks) / sizeof(benchmark_t *);
