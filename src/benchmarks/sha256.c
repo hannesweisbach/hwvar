@@ -17,7 +17,9 @@ typedef uint32_t ulong32;
    #define MIN(x, y) ( ((x)<(y))?(x):(y) )
 #endif
 
-#if defined(__BYTE_ORDER__) && ((__BYTE_ORDER__) == (__ORDER_LITTLE_ENDIAN__))
+#if (defined(__BYTE_ORDER__) &&                                                \
+     ((__BYTE_ORDER__) == (__ORDER_LITTLE_ENDIAN__))) ||                       \
+    defined(__amd64__)
 #define BSWAP32(x) __builtin_bswap32((x))
 #else
 #define BSWAP32(x) (x)
