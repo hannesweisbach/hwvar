@@ -177,7 +177,7 @@ static void *HACCmk_work(void *arg_) {
   const float fcoeff = 0.23f;
   const float fsrrmax2 = 0.5f;
   const float mp_rsm2 = 0.03f;
-  const int count = 327; // maybe this can also be used to adjust runtime ?
+  const int count = 50; //327; // make HACCmk a bit more fine-grained
 
   HACCmk_args_t *arg = (HACCmk_args_t *)arg_;
 
