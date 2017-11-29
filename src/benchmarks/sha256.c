@@ -593,7 +593,8 @@ static void *SHA256_call(void *arg_) {
   SHA256_t *arg = (SHA256_t *)arg_;
 
   for (unsigned long i = 0; i < iterations; ++i) {
-    assert(sha256_process(&arg->md, arg->buf, arg->length) == CRYPT_OK);
+    int ret = sha256_process(&arg->md, arg->buf, arg->length);
+    assert(ret == CRYPT_OK);
   }
   return NULL;
 }
