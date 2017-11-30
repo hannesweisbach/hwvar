@@ -40,7 +40,7 @@ benchmark_t *get_benchmark_name(const char *const name) {
   for (unsigned i = 0; i < num_benchmarks; ++i) {
     benchmark_t *benchmark = benchmarks[i];
 
-    if (strcmp(name, benchmark->name) == 0) {
+    if (strcasecmp(name, benchmark->name) == 0) {
       return benchmark;
     }
   }
