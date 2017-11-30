@@ -595,7 +595,8 @@ int main(int argc, char *argv[]) {
 
   unsigned num_benchmarks = opt_benchmarks == NULL
                                 ? number_benchmarks()
-                                : count_chars(optarg, ',') + 1;
+                                : count_chars(opt_benchmarks, ',') + 1;
+
   benchmark_t **benchmarks =
       (benchmark_t **)malloc(sizeof(benchmark_t *) * num_benchmarks);
   if (benchmarks == NULL) {
