@@ -94,7 +94,7 @@ void *worker(void *arg_) {
 
   pthread_mutex_lock(&arg->lock);
   int dirigent = arg->dirigent;
-  fprintf(stderr, "Setting CPU for thread %s (%d)\n", arg->cpuset_string, arg->cpu);
+  fprintf(stderr, "Binding thread %d to CPU %s\n", arg->thread, arg->cpuset_string);
   /*
    * hwloc_cpuset_t current = hwloc_cpuset_alloc();
    * int hwloc_get_last_cpu_location(arg->topology,current,
@@ -105,6 +105,7 @@ void *worker(void *arg_) {
     fprintf(stderr, "Error binding thread %d to CPU %d: %d\n", arg->thread,
             arg->cpu, err);
   }
+
   pthread_mutex_unlock(&arg->lock);
 
   while (arg->run) {

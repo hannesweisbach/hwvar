@@ -15,8 +15,11 @@
 #include "dgemm.h"
 
 static threads_t *spawn_workers(hwloc_topology_t topology,
-                                hwloc_const_cpuset_t cpuset) {
-  const int depth = hwloc_get_type_or_below_depth(topology, HWLOC_OBJ_PU);
+                                hwloc_const_cpuset_t cpuset,
+                                int include_hyperthreads) {
+  const hwloc_obj_type_t type =
+      (include_hyperthreads) ? HWLOC_OBJ_PU : HWLOC_OBJ_CORE;
+  const int depth = hwloc_get_type_or_below_depth(topology, type);
   const unsigned num_threads =
       hwloc_get_nbobjs_by_depth(topology, (unsigned)depth);
 
@@ -43,7 +46,7 @@ static threads_t *spawn_workers(hwloc_topology_t topology,
      * If no object for that type exists, NULL is returned. If there
      * are several levels with objects of that type, NULL is returned and ther
      * caller may fallback to hwloc_get_obj_by_depth(). */
-    hwloc_obj_t obj = hwloc_get_obj_by_type(topology, HWLOC_OBJ_PU, pu);
+    hwloc_obj_t obj = hwloc_get_obj_by_type(topology, type, pu);
     if (obj == NULL) {
       printf("Error getting obj. Implement fallback to "
              "hwloc_get_obj_by_depth()?\n");
@@ -69,13 +72,14 @@ static threads_t *spawn_workers(hwloc_topology_t topology,
     thread->thread_arg.run = 1;
     thread->thread_arg.dirigent = i == 0;
     thread->thread_arg.thread = i;
-    thread->thread_arg.cpu = obj->os_index;
     thread->thread_arg.topology = topology;
+    thread->thread_arg.cpu = hwloc_bitmap_first(tmp);
     thread->thread_arg.cpuset = tmp;
     hwloc_bitmap_asprintf(&thread->thread_arg.cpuset_string, tmp);
-#if 0
-    fprintf(stderr, "Found L:%u P:%u %s %d\n", obj->logical_index, obj->os_index,
-            thread->thread_arg.cpuset_string, i);
+#if 1
+    fprintf(stderr, "Found L:%u P:%u %s %d %d %d\n", obj->logical_index,
+            obj->os_index, thread->thread_arg.cpuset_string, i, pu,
+            thread->thread_arg.cpu);
 #endif
 
     hwloc_bitmap_set(allocated, obj->os_index);
@@ -482,6 +486,7 @@ int main(int argc, char *argv[]) {
   FILE *output = stdout;
   static int auto_tune = 0;
   static int tune = 0;
+  static int use_hyperthreads = 1;
   hwloc_cpuset_t cpuset1 = hwloc_bitmap_alloc();
   hwloc_cpuset_t cpuset2 = hwloc_bitmap_alloc();
   hwloc_cpuset_t runset = hwloc_bitmap_alloc();
@@ -498,6 +503,7 @@ int main(int argc, char *argv[]) {
       {"time", required_argument, NULL, 't'},
       {"tune", no_argument, &tune, 1},
       {"auto", no_argument, &auto_tune, 1},
+      {"no-ht", no_argument, &use_hyperthreads, 0},
       {NULL, 0, NULL, 0}};
 
   opterr = 0;
@@ -690,7 +696,7 @@ int main(int argc, char *argv[]) {
   assert((policy == PAIR) == !hwloc_bitmap_iszero(cpuset2));
   hwloc_bitmap_or(runset, cpuset1, cpuset2);
 
-  threads_t *workers = spawn_workers(topology, runset);
+  threads_t *workers = spawn_workers(topology, runset, use_hyperthreads);
 
   for (unsigned i = 0; i < num_benchmarks; ++i) {
     benchmark_t *benchmark = benchmarks[i];
