@@ -60,7 +60,12 @@ static threads_t *spawn_workers(hwloc_topology_t topology,
       hwloc_bitmap_free(tmp);
       continue;
     }
-    const int cpunum = hwloc_bitmap_first(tmp);
+    const int cpunum_check = hwloc_bitmap_first(tmp);
+    if (cpunum_check < 0) {
+      fprintf(stderr, "No index is set in the bitmask\n");
+      exit(EXIT_FAILURE);
+    }
+    const unsigned cpunum = (unsigned)cpunum_check;
 
     thread_data_t *thread = &workers->threads[i];
     // TODO handle errors.

@@ -1,6 +1,8 @@
 #include <assert.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #ifdef HAVE_SCHED_H
 #include <sched.h>
