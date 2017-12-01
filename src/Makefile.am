@@ -1,8 +1,8 @@
 SUBDIRS = benchmarks
-AM_CFLAGS  = -D_GNU_SOURCE -Og -std=c11 -g
-#AM_CFLAGS += -fsanitize=undefined -fsanitize=thread
-AM_CFLAGS += -I $(top_srcdir)/include
-AM_CFLAGS += -I $(srcdir)/benchmarks
+AM_CFLAGS = -std=c99
+AM_CPPFLAGS = -D_GNU_SOURCE
+AM_CPPFLAGS += -I$(top_srcdir)/include
+AM_CPPFLAGS += -I$(srcdir)/benchmarks
 # this lists the binaries to produce, the (non-PHONY, binary) targets in
 # the previous manual Makefile
 noinst_LIBRARIES = libbarrier.a libworker.a
@@ -11,5 +11,6 @@ libworker_a_SOURCES = worker.c
 
 bin_PROGRAMS = hwvar
 hwvar_SOURCES = main.c
+nodist_EXTRA_hwvar_SOURCES = dummy.cxx # to make automake link with g++
 hwvar_LDADD = libworker.a libbarrier.a benchmarks/libbenchmarks.a
 hwvar_LDFLAGS = -pthread
