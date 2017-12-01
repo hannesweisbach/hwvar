@@ -60,6 +60,7 @@ static threads_t *spawn_workers(hwloc_topology_t topology,
       hwloc_bitmap_free(tmp);
       continue;
     }
+    const int cpunum = hwloc_bitmap_first(tmp);
 
     thread_data_t *thread = &workers->threads[i];
     // TODO handle errors.
@@ -73,16 +74,16 @@ static threads_t *spawn_workers(hwloc_topology_t topology,
     thread->thread_arg.dirigent = i == 0;
     thread->thread_arg.thread = i;
     thread->thread_arg.topology = topology;
-    thread->thread_arg.cpu = hwloc_bitmap_first(tmp);
+    thread->thread_arg.cpu = cpunum;
     thread->thread_arg.cpuset = tmp;
     hwloc_bitmap_asprintf(&thread->thread_arg.cpuset_string, tmp);
-#if 1
+#if 0
     fprintf(stderr, "Found L:%u P:%u %s %d %d %d\n", obj->logical_index,
             obj->os_index, thread->thread_arg.cpuset_string, i, pu,
-            thread->thread_arg.cpu);
+            cpunum);
 #endif
 
-    hwloc_bitmap_set(allocated, obj->os_index);
+    hwloc_bitmap_set(allocated, cpunum);
     pthread_mutex_unlock(&thread->thread_arg.lock);
 
     if (i > 0) {
@@ -722,7 +723,7 @@ int main(int argc, char *argv[]) {
       exit(EXIT_FAILURE);
     }
 
-    result_print(output, result, runset);
+    result_print(output, result, workers->cpuset);
   }
 
   stop_workers(workers);
