@@ -13,6 +13,11 @@ realistic measurement of performance variation be taken.
 We provide a set of benchmarks kernels intended to test a variety of instruction
 mixes, data access patterns, and instruction-per-byte-ratios.
 
+### FWQ
+
+From the FTQ/FWQ benchmark from the Sequioa benchmark suite. Currently only the
+integer increment "work" is available.
+
 ### DGEMM
 
 Dense matrix multiplication benchmark from the HPCC benchmark suite. This
@@ -34,6 +39,17 @@ also test the influence of vector instructions on performance variantion.
 ### SHA256
 
 The SHA256 hash algorithm is used as an integer-only kernel.
+
+### HPCCG
+
+High Performance Computing Conjugate Gradients mini app from the Mantevo
+benchmark suite.  Time measurement code and any I/O have been removed from the
+benchmark kernel.
+
+### MiniFE
+
+The MiniFE mini app from the Mantevo benchmark suite. Time measurement and I/O
+code has been removed from the benchmark kernel.
 
 ## Benchmark setup and options
 
