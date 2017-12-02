@@ -78,8 +78,11 @@ For example, to compile the benchmark suite using fcc and hwloc installed in
 ```
 export HWLOC_DIR=$HOME/install/hwloc
 export LD_LIBRARY_PATH=${HWLOC_DIR}/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
-export CFLAGS="-I${HWLOC_DIR}/include/ -L${HWLOC_DIR}/lib/ -Xg -std=gnu99 -Xg -Kfast"
+export CPPFLAGS="-I${HWLOC_DIR}/include/"
+export LDFLAGS="-L${HWLOC_DIR}/lib/"
+export CFLAGS="-Xg -std=gnu99 -Xg -Kfast"
 export CC=/opt/FJSVmxlang/GM-2.0.0-05/bin/fcc 
+export CXX=/opt/FJSVmxlang/GM-2.0.0-05/bin/fcc (or fpp, or f++?)
 
 <path to source>/configure --build=sparc64-unknown-linux-gnu --host=sparc64-unknown-linux-gnu
 ```
@@ -88,13 +91,18 @@ Or, using cmake (or cmake3, depending on your distro):
 
 ```
 export HWLOC_DIR=$HOME/install/hwloc
-export CLFAGS="-Xg -std=gnu99 -Kfast"
-cmake <path to source> -DCMAKE_C_COMPILER=<path to fcc>
+export CFLAGS="-Xg -std=gnu99 -Kfast"
+export CXXFLAGS="-Xg -Kfast"
+cmake <path to source> -DCMAKE_C_COMPILER=<path to fcc> -DCMAKE_CXX_COMPILER=<path to f++>
 ```
 
 or:
 
 ```
-CLFAGS="-Xg -std=gnu99 -Kfast" cmake <path to source>
-  -DCMAKE_C_COMPILER=<path to fcc> -DHWLOC_DIR=<path to hwloc>
+CFLAGS="-Xg -std=gnu99 -Kfast" CXXFLAGS="-Xg -Kfast" cmake <path to source>
+  -DCMAKE_C_COMPILER=<path to fcc> -DCMAKE_CXX_COMPILER=<path to f++>
+  -DHWLOC_DIR=<path to hwloc>
 ```
+
+Don't forget to add optimization flags specific to your compiler, unless you
+want to benchmark unoptimized code!
