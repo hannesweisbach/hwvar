@@ -1,12 +1,28 @@
 cmake_minimum_required(VERSION 2.8.11)
 project(HWPErfVar C CXX)
 
+if(${CMAKE_C_COMPILER_ID} MATCHES "Intel")
+  set(COMPILER_IS_INTEL ON)
+  execute_process(COMMAND ${CMAKE_C_COMPILER} --version
+	OUTPUT_VARIABLE ICC_VERSION_OUTPUT
+	ERROR_VARIABLE  ICC_VERSION_OUTPUT
+	RESULT_VARIABLE ICC_VERSION_RESULT)
+  if(ICC_VERSION_RESULT)
+    message(SEND_ERROR "Command \"${CMAKE_C_COMPILER} --version\" failed:\n${ICC_VERSION_RESULT}")
+  else()
+    STRING(REGEX REPLACE "icc \\(ICC\\) ([0-9]+)\\.[0-9]+.*" "\\1" ICC_MAJOR  "${ICC_VERSION_OUTPUT}")
+    if(${ICC_MAJOR} LESS "12")
+      message(FATAL_ERROR "At least icc 12.0 is required.")
+    endif()
+  endif()
+endif()
+
 if ("${CMAKE_VERSION}" VERSION_EQUAL "3.1" OR
     "${CMAKE_VERSION}" VERSION_GREATER "3.1")
   set(CMAKE_C_STANDARD 99)
   set(CMAKE_C_STANDARD_REQUIRED ON)
 else()
-  if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_CLANG)
+  if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_CLANG OR COMPILER_IS_INTEL)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99")
   else()
     message(STATUS "C compiler is neither clang nor gcc.")
