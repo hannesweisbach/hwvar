@@ -85,6 +85,11 @@ or `--auto` option.
 Currently autotools and CMake are supported. For boths build systems out-of-tree
 builds should be used.
 
+The MiniFE and HPCCG kernel are currently referenced via git submodules. After
+checkout issue `git submodule update --init` to check them out and update them.
+CMake checks for this automatically at configuration time and performs the call
+to git submodule, if necessary.
+
 The benchmark suite depends on the hwloc library. If hwloc is not available in a
 standard directory, it has to made available manually.
 
