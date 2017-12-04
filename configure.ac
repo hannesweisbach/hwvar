@@ -8,8 +8,13 @@ AM_INIT_AUTOMAKE([foreign])
 AC_CONFIG_MACRO_DIRS([m4])
 
 AC_PROG_CC
+AC_PROG_CC_STDC
 AC_PROG_CXX
 AC_PROG_RANLIB
+
+if test "$ac_cv_prog_cc_stdc" = "no"; then
+  AC_MSG_ERROR(["Compiler does not support C99.])
+fi
 
 AC_HEADER_ASSERT
 AC_CHECK_HEADER([stdlib.h], [], [AC_MSG_ERROR([stdlib.h not found.])])
@@ -34,7 +39,6 @@ AC_SEARCH_LIBS([hwloc_topology_init], [hwloc], [], [
 ])
 
 #AC_C_RESTRICT
-AX_CHECK_COMPILE_FLAG([-std=c11], [CFLAGS="$CFLAGS -std=c11"])
 AX_CHECK_COMPILE_FLAG([-Weverything], [CFLAGS="$CFLAGS -Weverything"])
 
 AC_CONFIG_HEADERS([config.h])
