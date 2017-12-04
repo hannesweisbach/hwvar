@@ -19,7 +19,7 @@ typedef uint32_t ulong32;
 
 #if (defined(__BYTE_ORDER__) &&                                                \
      ((__BYTE_ORDER__) == (__ORDER_LITTLE_ENDIAN__))) ||                       \
-    defined(__amd64__)
+    defined(__x86_64__)
 #define BSWAP32(x) __builtin_bswap32((x))
 #else
 #define BSWAP32(x) (x)
