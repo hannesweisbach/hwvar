@@ -32,4 +32,4 @@ set_property(TARGET MiniFE APPEND PROPERTY COMPILE_DEFINITIONS
 
 add_library(benchmark benchmark.c dgemm.c sha256.c HACCmk.c stream.c fwq.c hpccg.c++ ${HPCCG_SRC})
 target_include_directories(benchmark PUBLIC .)
-target_link_libraries(benchmark PUBLIC MiniFE)
+target_link_libraries(benchmark LINK_PUBLIC MiniFE)
