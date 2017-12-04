@@ -1,3 +1,9 @@
+if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/HPCCG/.git OR
+   NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/MiniFE/.git)
+  message(STATUS "Running git submodule update --init.")
+  execute_process(COMMAND git submodule update --init WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+endif()
+
 set(HPCCG_SRC HPCCG/generate_matrix.cpp HPCCG/compute_residual.cpp
               HPCCG/dump_matlab_matrix.cpp HPCCG/HPC_sparsemv.cpp
               HPCCG/HPCCG.cpp HPCCG/waxpby.cpp HPCCG/ddot.cpp)
