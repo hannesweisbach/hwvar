@@ -83,7 +83,7 @@ or `--auto` option.
 ## Building
 
 Currently autotools and CMake are supported. For boths build systems out-of-tree
-builds should be used.
+builds should be used. Tested compilers included gcc, clang and icc.
 
 The MiniFE and HPCCG kernel are currently referenced via git submodules. After
 checkout issue `git submodule update --init` to check them out and update them.
@@ -92,6 +92,11 @@ to git submodule, if necessary.
 
 The benchmark suite depends on the hwloc library. If hwloc is not available in a
 standard directory, it has to made available manually.
+
+Don't forget to add optimization flags specific to your compiler, unless you
+want to benchmark unoptimized code!
+
+### Examples Compiling with fcc
 
 For example, to compile the benchmark suite using fcc and hwloc installed in
 `~/install/hwloc` issue the following commands:
@@ -122,8 +127,40 @@ or:
 ```
 CFLAGS="-Xg -std=gnu99 -Kfast" CXXFLAGS="-Xg -Kfast" cmake <path to source>
   -DCMAKE_C_COMPILER=<path to fcc> -DCMAKE_CXX_COMPILER=<path to f++>
-  -DHWLOC_DIR=<path to hwloc>
+  -DHWLOC_DIR=<path to hwloc> -DCMAKE_BUILD_TYPE=Release
 ```
 
-Don't forget to add optimization flags specific to your compiler, unless you
-want to benchmark unoptimized code!
+### Examples Compiling with gcc
+
+```
+module load gcc
+Module gcc/7.1.0 loaded.
+export CFLAGS="-O3 -ffast-math -ftree-vectorize"
+export CXXFLAGS="-O3 -ffast-math -ftree-vectorize"
+cmake ../hwvar/ -DCMAKE_BUILD_TYPE=Release
+
+### Examples Compiling with icc
+
+```
+module load intel
+# Module intel/2018.1.163 loaded.
+module load gcc
+# Module gcc/7.1.0 loaded.
+module load hwloc
+# Module hwloc/1.11.6 loaded.
+export CFLAGS="-ipo -O3 -no-prec-div -fp-model fast=2 -xHost -ip"
+export CXXFLAGS="-ipo -O3 -no-prec-div -fp-model fast=2 -xHost -ip"
+CC=icc CXX=icpc cmake <path to source> -DCMAKE_BUILD_TYPE=Release
+```
+
+```
+module load intel/12.1
+# Module intel/12.1 loaded.
+# Load a compatible gcc version.
+# I don't know what that version is for your system.
+module load hwloc
+# Module hwloc/1.11.6 loaded.
+export CFLAGS="-ipo -O3 -no-prec-div -fp-model fast=2 -xHost -ip"
+export CXXFLAGS="-ipo -O3 -no-prec-div -fp-model fast=2 -xHost -ip"
+CC=icc CXX=icpc cmake <path to source> -DCMAKE_AR:STRING=xiar -DCMAKE_BUILD_TYPE=Release
+```
