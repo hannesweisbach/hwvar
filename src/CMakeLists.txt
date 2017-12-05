@@ -5,6 +5,6 @@ target_link_libraries(hwperfvar benchmark ${HWLOC_LIBRARIES} ${CMAKE_THREAD_LIBS
 if(HAVE_LIBRT)
   target_link_libraries(hwperfvar ${LIBRT_LIBRARIES})
 endif()
-if(HAVE_JEVENTS)
+if(JEVENTS_FOUND)
   target_link_libraries(hwperfvar ${JEVENTS_LIBRARIES})
 endif()

@@ -60,7 +60,7 @@ find_library(JEVENTS_LIBRARIES jevents
   HINTS ${JEVENTS_DIR}
   PATH_SUFFIXES lib lib32 lib64)
 check_include_files(rdpmc.h HAVE_RDPMC_H)
-find_package_handle_standard_args(RDMPC DEFAULT_MSG JEVENTS_LIBRARIES HAVE_RDPMC_H)
+find_package_handle_standard_args(JEVENTS DEFAULT_MSG JEVENTS_LIBRARIES HAVE_RDPMC_H)
 
 include_directories(include ${CMAKE_CURRENT_BINARY_DIR})
 
