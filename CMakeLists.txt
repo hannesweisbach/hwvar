@@ -55,7 +55,34 @@ else()
   check_function_exists(clock_gettime HAVE_CLOCK_GETTIME)
 endif()
 
+include(FindPackageHandleStandardArgs)
+find_library(JEVENTS_LIBRARIES jevents
+  HINTS ${JEVENTS_DIR}
+  PATH_SUFFIXES lib lib32 lib64)
+check_include_files(rdpmc.h HAVE_RDPMC_H)
+find_package_handle_standard_args(RDMPC DEFAULT_MSG JEVENTS_LIBRARIES HAVE_RDPMC_H)
+
 include_directories(include ${CMAKE_CURRENT_BINARY_DIR})
+
+list(LENGTH PMCS NUM_PMCS)
+if(PMCS)
+  set(ENABLE_PMCS ON)
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
+    foreach(PMC ${PMCS})
+      if(RES)
+        set(RES "${RES}, \"${PMC}\"")
+      else()
+        set(RES "\"${PMC}\"")
+      endif()
+    endforeach()
+    set(PMC_INITIALIZER ${RES})
+    set(PMC_NAMES ${RES})
+  else()
+    message(FATAL_ERROR "Additional performance counters not implemented for ${CMAKE_SYSTEM_PROCESSOR}")
+  endif()
+  message(STATUS "Enabling ${NUM_PMCS} performance counters:")
+  message(STATUS "  ${PMC_INITIALIZER}")
+endif()
 
 add_subdirectory(src)
 

@@ -14,6 +14,11 @@
 
 #include "dgemm.h"
 
+#ifdef HAVE_RDPMC_H
+#include <rdpmc.h>
+#include <jevents.h>
+#endif
+
 static threads_t *spawn_workers(hwloc_topology_t topology,
                                 hwloc_const_cpuset_t cpuset,
                                 int include_hyperthreads) {
@@ -187,35 +192,50 @@ typedef struct {
   uint64_t *data;
   unsigned threads;
   unsigned repetitions;
+  unsigned counters;
 } benchmark_result_t;
 
-static benchmark_result_t result_alloc(unsigned threads,
-                                       const unsigned repetitions) {
-  benchmark_result_t result = {
-      .data = NULL, .threads = threads, .repetitions = repetitions};
+static benchmark_result_t result_alloc(const unsigned threads,
+                                       const unsigned repetitions,
+                                       const unsigned num_counters) {
+  benchmark_result_t result = {.data = NULL,
+                               .threads = threads,
+                               .repetitions = repetitions,
+                               .counters = num_counters - 1};
 
-  result.data = (uint64_t *)malloc(sizeof(uint64_t) * threads * repetitions);
+  result.data = (uint64_t *)malloc(sizeof(uint64_t) * threads * repetitions *
+                                   num_counters);
 
   return result;
 }
 
 static void result_print(FILE *file, benchmark_result_t result,
                          hwloc_const_cpuset_t cpuset) {
-  int cpu = -1;
-  for (unsigned thread = 0; thread < result.threads; ++thread) {
-    cpu = hwloc_bitmap_next(cpuset, cpu);
-    fprintf(file, "%2d ", cpu);
-    for (unsigned rep = 0; rep < result.repetitions; ++rep) {
-      fprintf(file, "%10" PRIu64 " ", result.data[thread * result.repetitions + rep]);
+  for (unsigned counter = 0; counter < result.counters + 1; ++counter) {
+    int cpu = -1;
+    if (counter && (counter - 1 < NUM_PMCS)) {
+      fprintf(file, "# %s\n", pmc_names[counter - 1]);
     }
-    fprintf(file, "\n");
+    for (unsigned thread = 0; thread < result.threads; ++thread) {
+      cpu = hwloc_bitmap_next(cpuset, cpu);
+      fprintf(file, "%2d ", cpu);
+      for (unsigned rep = 0; rep < result.repetitions; ++rep) {
+        fprintf(
+            file, "%10" PRIu64 " ",
+            result.data[thread * result.repetitions * (result.counters + 1) +
+                        (result.counters + 1) * rep + counter]);
+      }
+      fprintf(file, "\n");
+    }
   }
 }
 
 static benchmark_result_t run_in_parallel(threads_t *workers, benchmark_t *ops,
-                                          const unsigned repetitions) {
+                                          const unsigned repetitions,
+                                          const unsigned num_counters) {
   const int cpus = hwloc_bitmap_weight(workers->cpuset);
-  benchmark_result_t result = result_alloc((unsigned)cpus, repetitions);
+  benchmark_result_t result =
+      result_alloc((unsigned)cpus, repetitions, num_counters);
   step_t *step = init_step(cpus);
 
   for (int i = 0; i < cpus; ++i) {
@@ -223,8 +243,9 @@ static benchmark_result_t run_in_parallel(threads_t *workers, benchmark_t *ops,
     work->ops = ops;
     work->arg = NULL;
     work->barrier = &step->barrier;
-    work->result = &result.data[(unsigned)i * repetitions];
+    work->result = &result.data[(unsigned)i * repetitions * num_counters];
     work->reps = repetitions;
+    work->counters = num_counters;
 
     struct arg *arg = &workers->threads[i].thread_arg;
     queue_work(arg, work);
@@ -241,9 +262,11 @@ static benchmark_result_t run_in_parallel(threads_t *workers, benchmark_t *ops,
 }
 
 static benchmark_result_t run_one_by_one(threads_t *workers, benchmark_t *ops,
-                                         unsigned repetitions) {
+                                         const unsigned repetitions,
+                                         const unsigned num_counters) {
   const int cpus = hwloc_bitmap_weight(workers->cpuset);
-  benchmark_result_t result = result_alloc((unsigned)cpus, repetitions);
+  benchmark_result_t result =
+      result_alloc((unsigned)cpus, repetitions, num_counters);
   step_t *step = init_step(1);
 
   for (int i = 0; i < cpus; ++i) {
@@ -251,8 +274,12 @@ static benchmark_result_t run_one_by_one(threads_t *workers, benchmark_t *ops,
     work->ops = ops;
     work->arg = NULL;
     work->barrier = &step->barrier;
-    work->result = &result.data[(unsigned)i * repetitions];
+    work->result = &result.data[(unsigned)i * repetitions * num_counters];
     work->reps = repetitions;
+    work->counters = num_counters;
+
+    fprintf(stdout, "Running %u of %i\r", i + 1, cpus);
+    fflush(stdout);
 
     struct arg *arg = &workers->threads[i].thread_arg;
     queue_work(arg, work);
@@ -269,7 +296,7 @@ static benchmark_result_t run_one_by_one(threads_t *workers, benchmark_t *ops,
 static benchmark_result_t
 run_two_benchmarks(threads_t *workers, benchmark_t *ops1, benchmark_t *ops2,
                    hwloc_const_cpuset_t set1, hwloc_const_cpuset_t set2,
-                   const unsigned repetitions) {
+                   const unsigned repetitions, const unsigned num_counters) {
   assert(!hwloc_bitmap_intersects(set1, set2));
   hwloc_cpuset_t cpuset = hwloc_bitmap_alloc();
   hwloc_bitmap_or(cpuset, set1, set2);
@@ -277,7 +304,8 @@ run_two_benchmarks(threads_t *workers, benchmark_t *ops1, benchmark_t *ops2,
   assert(hwloc_bitmap_isincluded(cpuset, workers->cpuset));
   const int cpus = hwloc_bitmap_weight(cpuset);
   assert(cpus > 0);
-  benchmark_result_t result = result_alloc((unsigned)cpus, repetitions);
+  benchmark_result_t result =
+      result_alloc((unsigned)cpus, repetitions, num_counters);
   step_t *step = init_step(cpus);
 
   for (int i = 0; i < cpus; ++i) {
@@ -286,8 +314,9 @@ run_two_benchmarks(threads_t *workers, benchmark_t *ops1, benchmark_t *ops2,
     work->ops = hwloc_bitmap_isset(set1, arg->cpu) ? ops1 : ops2;
     work->arg = NULL;
     work->barrier = &step->barrier;
-    work->result = &result.data[(unsigned)i * repetitions];
+    work->result = &result.data[(unsigned)i * repetitions * num_counters];
     work->reps = repetitions;
+    work->counters = num_counters;
 
     queue_work(arg, work);
   }
@@ -479,6 +508,12 @@ int main(int argc, char *argv[]) {
     hwloc_bitmap_clr(restricted, 0);
     hwloc_topology_restrict(topology, restricted, 0);
   }
+
+#ifdef HAVE_RDPMC_H
+  // Initialize the racy libjevents. This is still broken.
+  struct perf_event_attr attr;
+  resolve_event("", &attr);
+#endif
 
   struct hwloc_cache_attr_s l1 = l1_attributes(topology);
 
@@ -705,6 +740,8 @@ int main(int argc, char *argv[]) {
 
   threads_t *workers = spawn_workers(topology, runset, use_hyperthreads);
 
+  const unsigned num_pmus = NUM_PMCS + 1;
+
   for (unsigned i = 0; i < num_benchmarks; ++i) {
     benchmark_t *benchmark = benchmarks[i];
 
@@ -713,15 +750,15 @@ int main(int argc, char *argv[]) {
     benchmark_result_t result;
     switch (policy) {
     case PARALLEL:
-      result = run_in_parallel(workers, benchmark, iterations);
+      result = run_in_parallel(workers, benchmark, iterations, num_pmus);
       break;
     case ONE_BY_ONE:
-      result = run_one_by_one(workers, benchmark, iterations);
+      result = run_one_by_one(workers, benchmark, iterations, num_pmus);
       break;
     case PAIR: {
       const unsigned next = i + 1 < num_benchmarks ? i + 1 : i;
       result = run_two_benchmarks(workers, benchmarks[i], benchmarks[next],
-                                  cpuset1, cpuset2, iterations);
+                                  cpuset1, cpuset2, iterations, num_pmus);
       i = i + 1;
     } break;
     case NR_POLICIES:

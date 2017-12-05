@@ -13,7 +13,7 @@ typedef struct work {
   void *arg;
   uint64_t *result;
   unsigned reps;
-  int padding__;
+  unsigned counters;
 } work_t;
 
 enum state { IDLE, QUEUED, WORKING, DONE };

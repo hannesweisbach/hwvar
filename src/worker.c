@@ -110,6 +110,8 @@ void *worker(void *arg_) {
 
   pthread_mutex_unlock(&arg->lock);
 
+  void * pmus = arch_pmu_init();
+
   while (arg->run) {
     work_t *work = wait_for_work(arg);
 
@@ -126,13 +128,18 @@ void *worker(void *arg_) {
       if (work->ops->reset_arg) {
         work->ops->reset_arg(benchmark_arg);
       }
-      // const uint64_t st = get_time();
+
+      const uint64_t offset = work->counters * rep;
+      if (work->result) {
+        arch_pmu_begin(pmus, &work->result[offset + 1]);
+      }
       const uint64_t start = arch_timestamp_begin();
       work->ops->call(benchmark_arg);
       const uint64_t end = arch_timestamp_end();
-      // const uint64_t et = get_time();
-      if (work->result)
-        work->result[rep] = end - start;
+      if (work->result) {
+        arch_pmu_end(pmus, &work->result[offset + 1]);
+        work->result[offset] = end - start;
+      }
     }
 
     return_finished_work(arg, work);
@@ -141,6 +148,7 @@ void *worker(void *arg_) {
       break;
   }
 
+  arch_pmu_free(pmus);
   if (!dirigent)
     fprintf(stderr, "Thread %s stopped.\n", arg->cpuset_string);
 
