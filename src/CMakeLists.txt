@@ -1,4 +1,10 @@
 add_subdirectory(benchmarks)
 add_executable(hwperfvar main.c worker.c barrier.c)
 set_source_files_properties(main.c PROPERTIES COMPILE_DEFINITIONS _GNU_SOURCE) # for asprintf
-target_link_libraries(hwperfvar benchmark ${HWLOC_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${LIBRT_LIBRARIES} ${JEVENTS_LIBRARIES})
+target_link_libraries(hwperfvar benchmark ${HWLOC_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
+if(HAVE_LIBRT)
+  target_link_libraries(hwperfvar ${LIBRT_LIBRARIES})
+endif()
+if(HAVE_JEVENTS)
+  target_link_libraries(hwperfvar ${JEVENTS_LIBRARIES})
+endif()
