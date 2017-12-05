@@ -17,7 +17,7 @@ static inline uint64_t timestamp() {
 static inline uint64_t arch_timestamp_begin(void) { return timestamp(); }
 static inline uint64_t arch_timestamp_end(void) { return timestamp(); }
 
-static void *arch_pmu_init(void) {}
+static void *arch_pmu_init(void) { return NULL; }
 static void arch_pmu_free(void *pmus_) {}
 static void arch_pmu_begin(void *pmus_, uint64_t *data) {}
 static void arch_pmu_end(void *pmus_, uint64_t *data) {}
@@ -33,7 +33,7 @@ static inline uint64_t timestamp() {
 static inline uint64_t arch_timestamp_begin(void) { return timestamp(); }
 static inline uint64_t arch_timestamp_end(void) { return timestamp(); }
 
-static void *arch_pmu_init(void) {}
+static void *arch_pmu_init(void) { return NULL; }
 static void arch_pmu_free(void *pmus_) {}
 static void arch_pmu_begin(void *pmus_, uint64_t *data) {}
 static void arch_pmu_end(void *pmus_, uint64_t *data) {}
@@ -128,7 +128,7 @@ static void arch_pmu_end(void *pmus_, uint64_t *data) {
 
 #else /* HAVE_RDPMC_H */
 
-static void *arch_pmu_init(void) {}
+static void *arch_pmu_init(void) { return NULL; }
 static void arch_pmu_free(void *pmus_) {}
 static void arch_pmu_begin(void *pmus_, uint64_t *data) {}
 static void arch_pmu_end(void *pmus_, uint64_t *data) {}
