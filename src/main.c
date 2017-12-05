@@ -19,6 +19,17 @@
 #include <jevents.h>
 #endif
 
+static uint64_t get_time() {
+  struct timespec ts;
+#ifdef HAVE_CLOCK_GETTIME
+  clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+#else
+  ts.tv_sec = ts.tv_nsec = 0;
+#endif
+
+  return (uint64_t)ts.tv_sec * 1000 * 1000 * 1000 + (uint64_t)ts.tv_nsec;
+}
+
 static threads_t *spawn_workers(hwloc_topology_t topology,
                                 hwloc_const_cpuset_t cpuset,
                                 int include_hyperthreads) {
@@ -269,6 +280,7 @@ static benchmark_result_t run_one_by_one(threads_t *workers, benchmark_t *ops,
       result_alloc((unsigned)cpus, repetitions, num_counters);
   step_t *step = init_step(1);
 
+  uint64_t diff;
   for (int i = 0; i < cpus; ++i) {
     work_t *work = &step->work[0];
     work->ops = ops;
@@ -278,9 +290,22 @@ static benchmark_result_t run_one_by_one(threads_t *workers, benchmark_t *ops,
     work->reps = repetitions;
     work->counters = num_counters;
 
-    fprintf(stdout, "Running %u of %i\r", i + 1, cpus);
-    fflush(stdout);
+    if (i) {
+      const uint64_t secs = diff / (1000 * 1000 * 1000UL);
+      const unsigned sec = secs % 60UL;
+      const uint64_t mins = (secs - sec) / 60;
+      const unsigned min = mins % 60UL;
+      const unsigned hours = (mins - min) / 60;
+      fprintf(stdout,
+              "Running %u of %i. Last took %02d:%02d:%02d (%" PRIu64 "s)\r",
+              i + 1, cpus, hours, min, sec, secs);
+      fflush(stdout);
+    } else {
+      fprintf(stdout, "Running %u of %i\r", i + 1, cpus);
+      fflush(stdout);
+    }
 
+    const uint64_t begin = get_time();
     struct arg *arg = &workers->threads[i].thread_arg;
     queue_work(arg, work);
     if (arg->dirigent) { // run dirigent
@@ -288,6 +313,7 @@ static benchmark_result_t run_one_by_one(threads_t *workers, benchmark_t *ops,
       worker(arg);
     }
     wait_until_done(arg);
+    diff = get_time() - begin;
   }
 
   return result;
@@ -370,13 +396,6 @@ static unsigned tune_size(const char *const name, const uint64_t cache_size,
   fprintf(stderr, "[Cache] --%s-size=%u requires %u bytes of %"PRIu64"k (%5.1f%%)\n",
           name, n, (unsigned)bytes, cache_size / 1024, p);
   return n;
-}
-
-static uint64_t get_time() {
-  struct timespec ts;
-  clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
-
-  return (uint64_t)ts.tv_sec * 1000 * 1000 * 1000 + (uint64_t)ts.tv_nsec;
 }
 
 /**
