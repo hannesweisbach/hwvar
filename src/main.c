@@ -696,7 +696,7 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  const int have_pmcs = (opt_pmcs != NULL) && (*opt_pmcs != '\0');
+  const unsigned have_pmcs = (opt_pmcs != NULL) && (*opt_pmcs != '\0');
   const unsigned num_pmcs = have_pmcs + count_chars(opt_pmcs, ',');
   const char **pmcs = NULL;
   if (have_pmcs) {

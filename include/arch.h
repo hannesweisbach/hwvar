@@ -80,7 +80,7 @@ static void *arch_pmu_init(const char **pmcs, const unsigned num_pmcs) {
   pmus->ctx = (struct rdpmc_ctx *)malloc(sizeof(struct rdpmc_ctx) * num_pmcs);
   pmus->active = 0;
 
-  for (int i = 0; i < num_pmcs; ++i) {
+  for (unsigned i = 0; i < num_pmcs; ++i) {
     struct perf_event_attr attr;
     const char *event = pmcs[i];
     int err = resolve_event(event, &attr);
@@ -106,7 +106,7 @@ static void *arch_pmu_init(const char **pmcs, const unsigned num_pmcs) {
 static void arch_pmu_free(void *pmus_) {
   struct pmu *pmus = (struct pmu *)pmus_;
 
-  for (int i = 0; i < pmus->active; ++i) {
+  for (unsigned i = 0; i < pmus->active; ++i) {
     rdpmc_close(&pmus->ctx[i]);
   }
 
@@ -116,7 +116,7 @@ static void arch_pmu_free(void *pmus_) {
 static void arch_pmu_begin(void *pmus_, uint64_t *data) {
   struct pmu *pmus = (struct pmu *)pmus_;
 
-  for (int i = 0; i < pmus->active; ++i) {
+  for (unsigned i = 0; i < pmus->active; ++i) {
     data[i] = rdpmc_read(&pmus->ctx[i]);
   }
 }
@@ -124,7 +124,7 @@ static void arch_pmu_begin(void *pmus_, uint64_t *data) {
 static void arch_pmu_end(void *pmus_, uint64_t *data) {
   struct pmu *pmus = (struct pmu *)pmus_;
 
-  for (int i = 0; i < pmus->active; ++i) {
+  for (unsigned i = 0; i < pmus->active; ++i) {
     data[i] = rdpmc_read(&pmus->ctx[i]) - data[i];
     data[i] = i+1;
   }
