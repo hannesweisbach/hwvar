@@ -87,7 +87,7 @@ static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs) {
   struct pmu *pmu = (struct pmu *)malloc(sizeof(struct pmu));
   pmu->num_pmcs = 0;
 
-  for (unsigned pmc = 0; pmc < num_pmcs; ++pmc) {
+  for (unsigned pmc = 0; pmc < num_pmcs && pmc < num_counters; ++pmc) {
     uint64_t type;
     const char *name = pmcs[pmc];
     const int err = str2type(name, &type);
@@ -109,16 +109,16 @@ static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs) {
 }
 
 static void arch_pmu_free(struct pmu *pmus) {
-  for (unsigned i = 0; i < pmu->num_pmcs; ++i) {
+  for (unsigned i = 0; i < pmus->num_pmcs; ++i) {
     select_reg(i);
     disable_reg(i);
   }
 
-  free(pmu);
+  free(pmus);
 }
 
 static void arch_pmu_begin(struct pmu *pmus, uint64_t *data) {
-  for (unsigned i = 0; i < pmu->num_pmcs; ++i) {
+  for (unsigned i = 0; i < pmus->num_pmcs; ++i) {
     // clear overflow flag
     __asm__ volatile("msr PMOVSCLR_EL0, %0" : : "r"((uint64_t)1 << i));
     select_reg(i);
@@ -133,7 +133,7 @@ static void arch_pmu_end(struct pmu *pmus, uint64_t *data) {
   uint64_t ovf = 0;
   __asm__ volatile("mrs %0, PMOVSSET_EL0" : "=r"(ovf));
 
-  for (unsigned i = 0; i < pmu->num_pmcs; ++i) {
+  for (unsigned i = 0; i < pmus->num_pmcs; ++i) {
     select_reg(i);
     *data++ = read_current_counter();
     if (ovf & (1 << i)) {
