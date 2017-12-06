@@ -20,29 +20,24 @@ static inline uint64_t arch_timestamp_begin(void) { return timestamp(); }
 static inline uint64_t arch_timestamp_end(void) { return timestamp(); }
 
 struct pmu_event {
-  const char *name, uint64_t type
-};
-
-const struct pmu_event pmu_events[] = {
-
-    {"SW_INCR", 0x00},
-#if 0
-   "L1I_CACHE_REFILL", "L1D_CACHE_REFILL", "L1D_CACHE",
-    "MEM_ACCESS", "L2D_CACHE",        "L2D_CACHE_REFILL", "CHAIN",
-#endif
+  const char *name;
+  uint64_t type;
 };
 
 /* ARM ARM D5.10 */
-enum pmu_events {
-  SW_INCR = 0x00,
-  L1I_CACHE_REFILL = 0x01,
-  L1D_CACHE_REFILL = 0x03,
-  L1D_CACHE = 0x04,
-  MEM_ACCESS = 0x13,
-  L2D_CACHE = 0x16,
-  L2D_CACHE_REFILL = 0x17,
-  CHAIN = 0x1e,
+const struct pmu_event pmu_events[] = {
+    {"SW_INCR", 0x00},          {"L1I_CACHE_REFILL", 0x01},
+    {"L1D_CACHE_REFILL", 0x03}, {"L1D_CACHE", 0x04},
+    {"MEM_ACCESS", 0x13},       {"L2D_CACHE", 0x16},
+    {"L2D_CACHE_REFILL", 0x17}, {"CHAIN", 0x1e},
 };
+
+struct pmu {
+  unsigned num_pmcs;
+};
+
+static void dmb() { __asm__ volatile("dmb sy" ::: "memory"); }
+static void isb() { __asm__ volatile("isb"); }
 
 static void select_reg(const uint64_t reg) {
   __asm__ volatile("msr PMSELR_EL0, %0" : : "r"(reg));
@@ -52,34 +47,34 @@ static void enable_reg(const uint32_t reg) {
   __asm__ volatile("msr PMCNTENSET_EL0, %0" : : "r"((uint64_t)1 << reg));
 }
 
+static void disable_reg(const uint32_t reg) {
+  __asm__ volatile("msr PMCNTENCLR_EL0, %0" : : "r"((uint64_t)1 << reg));
+}
+
+static uint64_t read_current_counter() {
+  uint64_t value;
+  __asm__ volatile("mrs %0, PMXEVCNTR_EL0" : "=r"(value));
+  return value;
+}
+
 static void write_type(const uint64_t type) {
   uint64_t result = 0x08000000 | (type & 0xffff);
   __asm__ volatile("msr PMXEVTYPER_EL0, %0" : : "r"(result));
 }
 
+static int str2type(const char *name, uint64_t *out) {
+  for (unsigned i = 0; i < sizeof(pmu_events) / sizeof(pmu_events[0]); ++i) {
+    if (strcasecmp(name, pmu_events[i].name) == 0) {
+      if (out) {
+        *out = pmu_events[i].type;
+      }
+      return 0;
+    }
+  }
+  return -1;
+}
+
 static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs) {
-static void *arch_pmu_init(const char **pmcs, const unsigned num_pmcs) {
-  static unsigned type[] = {
-#ifdef L1_I_MISS
-    L1I_CACHE_REFILL,
-#endif
-#ifdef L1_D_MISS
-    L1D_CACHE_REFILL,
-#endif
-#ifdef L2_D_MISS
-    L2D_CACHE_REFILL,
-#endif
-#ifdef L2_D_REF
-    L2D_CACHE,
-#endif
-#ifdef L1_D_REF
-    L1D_CACHE,
-#endif
-#if 0
-    CHAIN
-#endif
-  };
-  const uint64_t num_registers = sizeof(type) / sizeof(type[0]);
   uint64_t value;
 
   __asm__ volatile("mrs %0, PMCR_EL0" : "=r"(value));
@@ -89,21 +84,63 @@ static void *arch_pmu_init(const char **pmcs, const unsigned num_pmcs) {
     exit(EXIT_FAILURE);
   }
 
-  for (uint64_t reg = 0; reg < num_registers; ++reg) {
-    select_reg(reg);
-    write_type(type[reg]);
+  struct pmu *pmu = (struct pmu *)malloc(sizeof(struct pmu));
+  pmu->num_pmcs = 0;
+
+  for (unsigned pmc = 0; pmc < num_pmcs; ++pmc) {
+    uint64_t type;
+    const char *name = pmcs[pmc];
+    const int err = str2type(name, &type);
+    if (err) {
+      fprintf(stderr, "PMC %s not found.\n", name);
+      continue;
+    }
+    select_reg(pmu->num_pmcs);
+    write_type(type);
+    pmu->num_pmcs = pmu->num_pmcs + 1;
   }
 
-  for (uint64_t reg = num_registers; reg > 0; --reg) {
-    enable_reg(reg - 1);
-    __asm__ volatile("isb");
+  for (int i = (int)pmu->num_pmcs; i > 0; --i) {
+    enable_reg((unsigned)(i - 1));
+    isb();
   }
-  return NULL;
+
+  return pmu;
 }
 
-static void arch_pmu_free(struct pmu *pmus) {}
-static void arch_pmu_begin(struct pmu *pmus, uint64_t *data) {}
-static void arch_pmu_end(struct pmu *pmus, uint64_t *data) {}
+static void arch_pmu_free(struct pmu *pmus) {
+  for (unsigned i = 0; i < pmu->num_pmcs; ++i) {
+    select_reg(i);
+    disable_reg(i);
+  }
+
+  free(pmu);
+}
+
+static void arch_pmu_begin(struct pmu *pmus, uint64_t *data) {
+  for (unsigned i = 0; i < pmu->num_pmcs; ++i) {
+    // clear overflow flag
+    __asm__ volatile("msr PMOVSCLR_EL0, %0" : : "r"((uint64_t)1 << i));
+    select_reg(i);
+    // set counter register to 0
+    __asm__ volatile("msr PMXEVCNTR_EL0, %0" : : "r"((uint64_t)0));
+  }
+
+  isb();
+}
+
+static void arch_pmu_end(struct pmu *pmus, uint64_t *data) {
+  uint64_t ovf = 0;
+  __asm__ volatile("mrs %0, PMOVSSET_EL0" : "=r"(ovf));
+
+  for (unsigned i = 0; i < pmu->num_pmcs; ++i) {
+    select_reg(i);
+    *data++ = read_current_counter();
+    if (ovf & (1 << i)) {
+      printf("Warning, overflow in counter %d\n", i);
+    }
+  }
+}
 
 #elif defined(__sparc)
 
