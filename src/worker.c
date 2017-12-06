@@ -116,7 +116,7 @@ void *worker(void *arg_) {
     void *benchmark_arg =
         (work->ops->init_arg) ? work->ops->init_arg(work->arg) : work->arg;
 
-    void *pmus = arch_pmu_init(work->pmcs, work->num_pmcs);
+    struct pmu *pmus = arch_pmu_init(work->pmcs, work->num_pmcs);
 
     err = pthread_barrier_wait(work->barrier);
     if (err && err != PTHREAD_BARRIER_SERIAL_THREAD) {
