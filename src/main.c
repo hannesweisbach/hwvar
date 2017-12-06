@@ -700,7 +700,7 @@ int main(int argc, char *argv[]) {
   const unsigned num_pmcs = have_pmcs + count_chars(opt_pmcs, ',');
   const char **pmcs = NULL;
   if (have_pmcs) {
-    pmcs = (const char **)malloc(sizeof(char *) * num_pmcs - 1);
+    pmcs = (const char **)malloc(sizeof(char *) * num_pmcs);
     if (pmcs == NULL) {
       fprintf(stderr, "Error allocating memory\n");
       exit(EXIT_FAILURE);
