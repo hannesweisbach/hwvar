@@ -84,6 +84,13 @@ static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs) {
     exit(EXIT_FAILURE);
   }
 
+  const unsigned num_counters = (value >> 11) & 0x1f;
+  if (num_counters < num_pmcs) {
+    fprintf(stderr,
+            "%u events requested but only %u event counters are available.\n",
+            num_pmcs, num_counters);
+  }
+
   struct pmu *pmu = (struct pmu *)malloc(sizeof(struct pmu));
   pmu->num_pmcs = 0;
 
