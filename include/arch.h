@@ -19,7 +19,85 @@ static inline uint64_t timestamp() {
 static inline uint64_t arch_timestamp_begin(void) { return timestamp(); }
 static inline uint64_t arch_timestamp_end(void) { return timestamp(); }
 
+struct pmu_event {
+  const char *name, uint64_t type
+};
+
+const struct pmu_event pmu_events[] = {
+
+    {"SW_INCR", 0x00},
+#if 0
+   "L1I_CACHE_REFILL", "L1D_CACHE_REFILL", "L1D_CACHE",
+    "MEM_ACCESS", "L2D_CACHE",        "L2D_CACHE_REFILL", "CHAIN",
+#endif
+};
+
+/* ARM ARM D5.10 */
+enum pmu_events {
+  SW_INCR = 0x00,
+  L1I_CACHE_REFILL = 0x01,
+  L1D_CACHE_REFILL = 0x03,
+  L1D_CACHE = 0x04,
+  MEM_ACCESS = 0x13,
+  L2D_CACHE = 0x16,
+  L2D_CACHE_REFILL = 0x17,
+  CHAIN = 0x1e,
+};
+
+static void select_reg(const uint64_t reg) {
+  __asm__ volatile("msr PMSELR_EL0, %0" : : "r"(reg));
+}
+
+static void enable_reg(const uint32_t reg) {
+  __asm__ volatile("msr PMCNTENSET_EL0, %0" : : "r"((uint64_t)1 << reg));
+}
+
+static void write_type(const uint64_t type) {
+  uint64_t result = 0x08000000 | (type & 0xffff);
+  __asm__ volatile("msr PMXEVTYPER_EL0, %0" : : "r"(result));
+}
+
 static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs) {
+static void *arch_pmu_init(const char **pmcs, const unsigned num_pmcs) {
+  static unsigned type[] = {
+#ifdef L1_I_MISS
+    L1I_CACHE_REFILL,
+#endif
+#ifdef L1_D_MISS
+    L1D_CACHE_REFILL,
+#endif
+#ifdef L2_D_MISS
+    L2D_CACHE_REFILL,
+#endif
+#ifdef L2_D_REF
+    L2D_CACHE,
+#endif
+#ifdef L1_D_REF
+    L1D_CACHE,
+#endif
+#if 0
+    CHAIN
+#endif
+  };
+  const uint64_t num_registers = sizeof(type) / sizeof(type[0]);
+  uint64_t value;
+
+  __asm__ volatile("mrs %0, PMCR_EL0" : "=r"(value));
+
+  if (!(value & 1)) {
+    fprintf(stderr, "PMU not enabled\n");
+    exit(EXIT_FAILURE);
+  }
+
+  for (uint64_t reg = 0; reg < num_registers; ++reg) {
+    select_reg(reg);
+    write_type(type[reg]);
+  }
+
+  for (uint64_t reg = num_registers; reg > 0; --reg) {
+    enable_reg(reg - 1);
+    __asm__ volatile("isb");
+  }
   return NULL;
 }
 
