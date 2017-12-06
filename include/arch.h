@@ -77,7 +77,7 @@ struct pmu {
 
 static void *arch_pmu_init(const char **pmcs, const unsigned num_pmcs) {
   struct pmu *pmus = (struct pmu *)malloc(sizeof(struct pmu));
-  pmus->ctx = (struct rdpmc *)malloc(sizeof(struct rdpmc_ctx) * num_pmcs);
+  pmus->ctx = (struct rdpmc_ctx *)malloc(sizeof(struct rdpmc_ctx) * num_pmcs);
   pmus->active = 0;
 
   for (int i = 0; i < num_pmcs; ++i) {
