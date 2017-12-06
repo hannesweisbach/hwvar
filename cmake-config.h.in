@@ -2,7 +2,3 @@
 #cmakedefine HAVE_PTHREAD_BARRIER_T
 #cmakedefine HAVE_CLOCK_GETTIME
 #cmakedefine HAVE_RDPMC_H
-#cmakedefine ENABLE_PMCS
-#define NUM_PMCS ${NUM_PMCS}
-#define PMC_INITIALIZER ${PMC_INITIALIZER}
-static const char *pmc_names[] = {${PMC_NAMES}};
