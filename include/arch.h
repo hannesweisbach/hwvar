@@ -17,7 +17,10 @@ static inline uint64_t timestamp() {
 static inline uint64_t arch_timestamp_begin(void) { return timestamp(); }
 static inline uint64_t arch_timestamp_end(void) { return timestamp(); }
 
-static void *arch_pmu_init(void) { return NULL; }
+static void *arch_pmu_init(const char **pmcs, const unsigned num_pmcs) {
+  return NULL;
+}
+
 static void arch_pmu_free(void *pmus_) {}
 static void arch_pmu_begin(void *pmus_, uint64_t *data) {}
 static void arch_pmu_end(void *pmus_, uint64_t *data) {}
@@ -33,7 +36,9 @@ static inline uint64_t timestamp() {
 static inline uint64_t arch_timestamp_begin(void) { return timestamp(); }
 static inline uint64_t arch_timestamp_end(void) { return timestamp(); }
 
-static void *arch_pmu_init(void) { return NULL; }
+static void *arch_pmu_init(const char **pmcs, const unsigned num_pmcs) {
+  return NULL;
+}
 static void arch_pmu_free(void *pmus_) {}
 static void arch_pmu_begin(void *pmus_, uint64_t *data) {}
 static void arch_pmu_end(void *pmus_, uint64_t *data) {}
@@ -66,17 +71,16 @@ static inline uint64_t arch_timestamp_end(void) {
 #include <rdpmc.h>
 
 struct pmu {
-  struct rdpmc_ctx ctx[NUM_PMCS];
+  struct rdpmc_ctx *ctx;
   unsigned active;
 };
 
-const char *pmcs[NUM_PMCS] = {PMC_INITIALIZER};
-
-static void *arch_pmu_init(void) {
+static void *arch_pmu_init(const char **pmcs, const unsigned num_pmcs) {
   struct pmu *pmus = (struct pmu *)malloc(sizeof(struct pmu));
+  pmus->ctx = (struct rdpmc_ctx *)malloc(sizeof(struct rdpmc_ctx) * num_pmcs);
   pmus->active = 0;
 
-  for (int i = 0; i < NUM_PMCS; ++i) {
+  for (unsigned i = 0; i < num_pmcs; ++i) {
     struct perf_event_attr attr;
     const char *event = pmcs[i];
     int err = resolve_event(event, &attr);
@@ -102,7 +106,7 @@ static void *arch_pmu_init(void) {
 static void arch_pmu_free(void *pmus_) {
   struct pmu *pmus = (struct pmu *)pmus_;
 
-  for (int i = 0; i < pmus->active; ++i) {
+  for (unsigned i = 0; i < pmus->active; ++i) {
     rdpmc_close(&pmus->ctx[i]);
   }
 
@@ -112,7 +116,7 @@ static void arch_pmu_free(void *pmus_) {
 static void arch_pmu_begin(void *pmus_, uint64_t *data) {
   struct pmu *pmus = (struct pmu *)pmus_;
 
-  for (int i = 0; i < pmus->active; ++i) {
+  for (unsigned i = 0; i < pmus->active; ++i) {
     data[i] = rdpmc_read(&pmus->ctx[i]);
   }
 }
@@ -120,7 +124,7 @@ static void arch_pmu_begin(void *pmus_, uint64_t *data) {
 static void arch_pmu_end(void *pmus_, uint64_t *data) {
   struct pmu *pmus = (struct pmu *)pmus_;
 
-  for (int i = 0; i < pmus->active; ++i) {
+  for (unsigned i = 0; i < pmus->active; ++i) {
     data[i] = rdpmc_read(&pmus->ctx[i]) - data[i];
     data[i] = i+1;
   }
@@ -128,7 +132,9 @@ static void arch_pmu_end(void *pmus_, uint64_t *data) {
 
 #else /* HAVE_RDPMC_H */
 
-static void *arch_pmu_init(void) { return NULL; }
+static void *arch_pmu_init(const char **pmcs, const unsigned num_pmcs) {
+  return NULL;
+}
 static void arch_pmu_free(void *pmus_) {}
 static void arch_pmu_begin(void *pmus_, uint64_t *data) {}
 static void arch_pmu_end(void *pmus_, uint64_t *data) {}

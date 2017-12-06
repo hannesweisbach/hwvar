@@ -221,11 +221,14 @@ static benchmark_result_t result_alloc(const unsigned threads,
 }
 
 static void result_print(FILE *file, benchmark_result_t result,
-                         hwloc_const_cpuset_t cpuset) {
+                         hwloc_const_cpuset_t cpuset, const char **pmcs,
+                         const unsigned num_pmcs) {
+  assert(num_pmcs == result.counters);
+
   for (unsigned counter = 0; counter < result.counters + 1; ++counter) {
     int cpu = -1;
-    if (counter && (counter - 1 < NUM_PMCS)) {
-      fprintf(file, "# %s\n", pmc_names[counter - 1]);
+    if (counter && (counter - 1 < num_pmcs)) {
+      fprintf(file, "# %s\n", pmcs[counter - 1]);
     }
     for (unsigned thread = 0; thread < result.threads; ++thread) {
       cpu = hwloc_bitmap_next(cpuset, cpu);
@@ -243,10 +246,11 @@ static void result_print(FILE *file, benchmark_result_t result,
 
 static benchmark_result_t run_in_parallel(threads_t *workers, benchmark_t *ops,
                                           const unsigned repetitions,
-                                          const unsigned num_counters) {
+                                          const char **pmcs,
+                                          const unsigned num_pmcs) {
   const int cpus = hwloc_bitmap_weight(workers->cpuset);
   benchmark_result_t result =
-      result_alloc((unsigned)cpus, repetitions, num_counters);
+      result_alloc((unsigned)cpus, repetitions, num_pmcs);
   step_t *step = init_step(cpus);
 
   for (int i = 0; i < cpus; ++i) {
@@ -254,9 +258,10 @@ static benchmark_result_t run_in_parallel(threads_t *workers, benchmark_t *ops,
     work->ops = ops;
     work->arg = NULL;
     work->barrier = &step->barrier;
-    work->result = &result.data[(unsigned)i * repetitions * num_counters];
+    work->result = &result.data[(unsigned)i * repetitions * num_pmcs];
     work->reps = repetitions;
-    work->counters = num_counters;
+    work->pmcs = pmcs;
+    work->num_pmcs = num_pmcs - 1;
 
     struct arg *arg = &workers->threads[i].thread_arg;
     queue_work(arg, work);
@@ -274,10 +279,11 @@ static benchmark_result_t run_in_parallel(threads_t *workers, benchmark_t *ops,
 
 static benchmark_result_t run_one_by_one(threads_t *workers, benchmark_t *ops,
                                          const unsigned repetitions,
-                                         const unsigned num_counters) {
+                                         const char **pmcs,
+                                         const unsigned num_pmcs) {
   const int cpus = hwloc_bitmap_weight(workers->cpuset);
   benchmark_result_t result =
-      result_alloc((unsigned)cpus, repetitions, num_counters);
+      result_alloc((unsigned)cpus, repetitions, num_pmcs);
   step_t *step = init_step(1);
 
   uint64_t diff;
@@ -286,9 +292,10 @@ static benchmark_result_t run_one_by_one(threads_t *workers, benchmark_t *ops,
     work->ops = ops;
     work->arg = NULL;
     work->barrier = &step->barrier;
-    work->result = &result.data[(unsigned)i * repetitions * num_counters];
+    work->result = &result.data[(unsigned)i * repetitions * num_pmcs];
     work->reps = repetitions;
-    work->counters = num_counters;
+    work->pmcs = pmcs;
+    work->num_pmcs = num_pmcs - 1;
 
     if (i) {
       const uint64_t secs = diff / (1000 * 1000 * 1000UL);
@@ -322,7 +329,8 @@ static benchmark_result_t run_one_by_one(threads_t *workers, benchmark_t *ops,
 static benchmark_result_t
 run_two_benchmarks(threads_t *workers, benchmark_t *ops1, benchmark_t *ops2,
                    hwloc_const_cpuset_t set1, hwloc_const_cpuset_t set2,
-                   const unsigned repetitions, const unsigned num_counters) {
+                   const unsigned repetitions, const char **pmcs,
+                   const unsigned num_pmcs) {
   assert(!hwloc_bitmap_intersects(set1, set2));
   hwloc_cpuset_t cpuset = hwloc_bitmap_alloc();
   hwloc_bitmap_or(cpuset, set1, set2);
@@ -331,7 +339,7 @@ run_two_benchmarks(threads_t *workers, benchmark_t *ops1, benchmark_t *ops2,
   const int cpus = hwloc_bitmap_weight(cpuset);
   assert(cpus > 0);
   benchmark_result_t result =
-      result_alloc((unsigned)cpus, repetitions, num_counters);
+      result_alloc((unsigned)cpus, repetitions, num_pmcs);
   step_t *step = init_step(cpus);
 
   for (int i = 0; i < cpus; ++i) {
@@ -340,9 +348,10 @@ run_two_benchmarks(threads_t *workers, benchmark_t *ops1, benchmark_t *ops2,
     work->ops = hwloc_bitmap_isset(set1, arg->cpu) ? ops1 : ops2;
     work->arg = NULL;
     work->barrier = &step->barrier;
-    work->result = &result.data[(unsigned)i * repetitions * num_counters];
+    work->result = &result.data[(unsigned)i * repetitions * num_pmcs];
     work->reps = repetitions;
-    work->counters = num_counters;
+    work->pmcs = pmcs;
+    work->num_pmcs = num_pmcs - 1;
 
     queue_work(arg, work);
   }
@@ -540,6 +549,7 @@ int main(int argc, char *argv[]) {
 
   enum policy policy = ONE_BY_ONE;
   char *opt_benchmarks = NULL;
+  char *opt_pmcs = NULL;
   unsigned iterations = 13;
   uint64_t size = l1.size;
   double time = 20;
@@ -564,6 +574,7 @@ int main(int argc, char *argv[]) {
       {"tune", no_argument, &tune, 1},
       {"auto", no_argument, &auto_tune, 1},
       {"no-ht", no_argument, &use_hyperthreads, 0},
+      {"pmcs", required_argument, NULL, 'm'},
       {NULL, 0, NULL, 0}};
 
   opterr = 0;
@@ -614,6 +625,9 @@ int main(int argc, char *argv[]) {
     case 'l':
       list_benchmarks();
       exit(EXIT_SUCCESS);
+    case 'm':
+      opt_pmcs = optarg;
+      break;
     case 'o':
       if (strcmp(optarg, "-") == 0) {
         /* stdout is the default */
@@ -660,7 +674,7 @@ int main(int argc, char *argv[]) {
   benchmark_t **benchmarks =
       (benchmark_t **)malloc(sizeof(benchmark_t *) * num_benchmarks);
   if (benchmarks == NULL) {
-    fprintf(stderr, "Error allocating memory");
+    fprintf(stderr, "Error allocating memory\n");
     exit(EXIT_FAILURE);
   }
 
@@ -679,6 +693,23 @@ int main(int argc, char *argv[]) {
   } else {
     for (unsigned i = 0; i < num_benchmarks; ++i) {
       benchmarks[i] = get_benchmark_idx(i);
+    }
+  }
+
+  const unsigned have_pmcs = (opt_pmcs != NULL) && (*opt_pmcs != '\0');
+  const unsigned num_pmcs = have_pmcs + count_chars(opt_pmcs, ',');
+  const char **pmcs = NULL;
+  if (have_pmcs) {
+    pmcs = (const char **)malloc(sizeof(char *) * num_pmcs - 1);
+    if (pmcs == NULL) {
+      fprintf(stderr, "Error allocating memory\n");
+      exit(EXIT_FAILURE);
+    }
+
+    char *arg = strtok(opt_pmcs, ",");
+    for (unsigned i = 0; arg != NULL && i < num_pmcs; ++i) {
+      pmcs[i] = arg;
+      arg = strtok(NULL, ",");
     }
   }
 
@@ -759,8 +790,6 @@ int main(int argc, char *argv[]) {
 
   threads_t *workers = spawn_workers(topology, runset, use_hyperthreads);
 
-  const unsigned num_pmus = NUM_PMCS + 1;
-
   for (unsigned i = 0; i < num_benchmarks; ++i) {
     benchmark_t *benchmark = benchmarks[i];
 
@@ -769,22 +798,25 @@ int main(int argc, char *argv[]) {
     benchmark_result_t result;
     switch (policy) {
     case PARALLEL:
-      result = run_in_parallel(workers, benchmark, iterations, num_pmus);
+      result =
+          run_in_parallel(workers, benchmark, iterations, pmcs, num_pmcs + 1);
       break;
     case ONE_BY_ONE:
-      result = run_one_by_one(workers, benchmark, iterations, num_pmus);
+      result =
+          run_one_by_one(workers, benchmark, iterations, pmcs, num_pmcs + 1);
       break;
     case PAIR: {
       const unsigned next = i + 1 < num_benchmarks ? i + 1 : i;
-      result = run_two_benchmarks(workers, benchmarks[i], benchmarks[next],
-                                  cpuset1, cpuset2, iterations, num_pmus);
+      result =
+          run_two_benchmarks(workers, benchmarks[i], benchmarks[next], cpuset1,
+                             cpuset2, iterations, pmcs, num_pmcs + 1);
       i = i + 1;
     } break;
     case NR_POLICIES:
       exit(EXIT_FAILURE);
     }
 
-    result_print(output, result, workers->cpuset);
+    result_print(output, result, workers->cpuset, pmcs, num_pmcs);
   }
 
   stop_workers(workers);

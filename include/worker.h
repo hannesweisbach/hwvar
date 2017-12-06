@@ -13,7 +13,8 @@ typedef struct work {
   void *arg;
   uint64_t *result;
   unsigned reps;
-  unsigned counters;
+  const char **pmcs;
+  unsigned num_pmcs;
 } work_t;
 
 enum state { IDLE, QUEUED, WORKING, DONE };
