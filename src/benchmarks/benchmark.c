@@ -14,11 +14,12 @@
 #include "minife.h"
 #include "sha256.h"
 #include "stream.h"
+#include "capacity.h"
 
 static benchmark_t *benchmarks[] = {&dgemm_ops,    &HACCmk_ops,   &SHA256,
                                     &fwq_ops,      &hpccg_ops,    &minife_ops,
-                                    &STREAM,       &STREAM_Scale, &STREAM_Add,
-                                    &STREAM_Triad, &STREAM_Copy};
+                                    &capacity_ops, &STREAM,       &STREAM_Scale,
+                                    &STREAM_Add,   &STREAM_Triad, &STREAM_Copy};
 
 unsigned number_benchmarks() {
   return sizeof(benchmarks) / sizeof(benchmark_t *);
