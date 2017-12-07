@@ -519,7 +519,6 @@ static int sha256_test(void) {
 
 static unsigned long size;
 static unsigned long iterations = 10 * 1000;
-static const char *const name = "sha256";
 
 typedef struct {
   hash_state md;
@@ -531,7 +530,7 @@ static void SHA256_Init(int argc, char *argv[],
                         const benchmark_config_t *const config) {
   assert(sha256_test() == CRYPT_OK);
 
-  size = tune_size(name, config, sizeof(char), 1, 1);
+  size = tune_size(SHA256.name, config, sizeof(char), 1, 1);
 
   static struct option longopts[] = {
       {"sha256-rounds", required_argument, NULL, 'i'},
@@ -595,7 +594,7 @@ static void *SHA256_call(void *arg_) {
 }
 
 benchmark_t SHA256 = {
-    name,
+    "sha256",
     SHA256_Init,
     SHA256_argument_init,
     NULL,

@@ -83,11 +83,10 @@ typedef struct {
 
 static unsigned N;
 static unsigned repeats = 8192;
-static const char *const name = "dgemm";
 
 static void dgemm_init(int argc, char *argv[],
                        const benchmark_config_t *const config) {
-  N = tune_size(name, config, sizeof(double), 3, 2);
+  N = tune_size(dgemm_ops.name, config, sizeof(double), 3, 2);
 
   static struct option longopts[] = {
       {"dgemm-rounds", required_argument, NULL, 'r'}, {NULL, 0, NULL, 0}};
@@ -152,7 +151,7 @@ static void *call_work(void *arg_) {
 }
 
 benchmark_t dgemm_ops = {
-    .name = name,
+    .name = "dgemm",
     .init = dgemm_init,
     .init_arg = init_argument,
     .reset_arg = NULL,
