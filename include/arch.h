@@ -245,13 +245,16 @@ static void arch_pmu_begin(struct pmu *pmus, uint64_t *data) {
 static void arch_pmu_end(struct pmu *pmus, uint64_t *data) {
   for (unsigned i = 0; i < pmus->active; ++i) {
     data[i] = rdpmc_read(&pmus->ctx[i]) - data[i];
-    data[i] = i + 1;
   }
 }
 
 #else /* HAVE_RDPMC_H */
 
 static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs) {
+  if (num_pmcs) {
+    fprintf(stderr, "PMC support not compiled in.\n");
+    exit(EXIT_FAILURE);
+  }
   return NULL;
 }
 static void arch_pmu_free(struct pmu *pmus) {}

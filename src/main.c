@@ -482,9 +482,8 @@ int main(int argc, char *argv[]) {
   }
 
 #ifdef HAVE_RDPMC_H
-  // Initialize the racy libjevents. This is still broken.
-  struct perf_event_attr attr;
-  resolve_event("", &attr);
+  // Initialize the racy libjevents.
+  read_events(NULL);
 #endif
 
   struct hwloc_cache_attr_s l1 = l1_attributes(topology);
