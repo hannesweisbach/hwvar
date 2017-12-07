@@ -81,14 +81,16 @@ typedef struct {
   int repeats;
 } dgemm_thread_args_t;
 
-static unsigned N = 36;
+static unsigned N;
 static unsigned repeats = 8192;
+static const char *const name = "dgemm";
 
-static void dgemm_init(int argc, char *argv[]) {
+static void dgemm_init(int argc, char *argv[],
+                       const benchmark_config_t *const config) {
+  N = tune_size(name, config, sizeof(double), 3, 2);
+
   static struct option longopts[] = {
-      {"dgemm-size", required_argument, NULL, 'N'},
-      {"dgemm-rounds", required_argument, NULL, 'r'},
-      {NULL, 0, NULL, 0}};
+      {"dgemm-rounds", required_argument, NULL, 'r'}, {NULL, 0, NULL, 0}};
 
   while (1) {
     int c = getopt_long(argc, argv, "-", longopts, NULL);
@@ -96,15 +98,6 @@ static void dgemm_init(int argc, char *argv[]) {
       break;
     errno = 0;
     switch (c) {
-    case 'N': {
-      unsigned long tmp = strtoul(optarg, NULL, 0);
-      if (errno == EINVAL || errno == ERANGE || tmp > INT_MAX) {
-        fprintf(stderr, "Could not parse --dgemm-size argument '%s': %s\n", optarg,
-                strerror(errno));
-        exit(EXIT_FAILURE);
-      }
-      N = (unsigned)tmp;
-    } break;
     case 'r': {
       unsigned long tmp = strtoul(optarg, NULL, 0);
       if (errno == EINVAL || errno == ERANGE || tmp > INT_MAX) {
@@ -159,14 +152,14 @@ static void *call_work(void *arg_) {
 }
 
 benchmark_t dgemm_ops = {
-    .name = "dgemm",
+    .name = name,
     .init = dgemm_init,
     .init_arg = init_argument,
     .reset_arg = NULL,
     .free_arg = destroy_argument,
     .call = call_work,
     .state = NULL,
-    .params = {.data_size = sizeof(double), .datasets = 3, .power = 2}};
+};
 
 #if 0
 double init_and_do_dgemm(

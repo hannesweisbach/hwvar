@@ -22,7 +22,8 @@ struct hpccg_args {
 
 static int rounds = 10;
 
-static void hpccg_init(int argc, char *argv[]) {
+static void hpccg_init(int argc, char *argv[],
+                       const benchmark_config_t *const config) {
   static struct option longopts[] = {
       {"hpccg-rounds", required_argument, NULL, 'r'},
       {NULL, 0, NULL, 0}};
@@ -75,6 +76,5 @@ static void *hpccg_work(void *arg_) {
   return NULL;
 }
 
-benchmark_t hpccg_ops = {
-    "hpccg", hpccg_init, init_argument, NULL,
-    NULL,    hpccg_work, NULL,          {sizeof(double), 63, 3}};
+benchmark_t hpccg_ops = {"hpccg", hpccg_init, init_argument, NULL,
+                         NULL,    hpccg_work, NULL};

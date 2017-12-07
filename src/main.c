@@ -154,8 +154,7 @@ static void *stop_thread(void *arg_) {
 }
 
 static int stop_single_worker(thread_data_t *thread, step_t *step) {
-  benchmark_t stop_ops = {"stop", NULL,        NULL, NULL,
-                          NULL,   stop_thread, NULL, {0, 0, 0}};
+  benchmark_t stop_ops = {"stop", NULL, NULL, NULL, NULL, stop_thread, NULL};
 
   step->work->ops = &stop_ops;
   step->work->arg = &thread->thread_arg;
@@ -258,7 +257,7 @@ static benchmark_result_t run_in_parallel(threads_t *workers, benchmark_t *ops,
   for (int i = 0; i < cpus; ++i) {
     work_t *work = &step->work[i];
     work->ops = ops;
-    work->arg = NULL;
+    work->arg = ops->state;
     work->barrier = &step->barrier;
     work->result = &result.data[(unsigned)i * repetitions * num_pmcs];
     work->reps = repetitions;
@@ -292,7 +291,7 @@ static benchmark_result_t run_one_by_one(threads_t *workers, benchmark_t *ops,
   for (int i = 0; i < cpus; ++i) {
     work_t *work = &step->work[0];
     work->ops = ops;
-    work->arg = NULL;
+    work->arg = ops->state;
     work->barrier = &step->barrier;
     work->result = &result.data[(unsigned)i * repetitions * num_pmcs];
     work->reps = repetitions;
@@ -348,7 +347,7 @@ run_two_benchmarks(threads_t *workers, benchmark_t *ops1, benchmark_t *ops2,
     struct arg *arg = &workers->threads[i].thread_arg;
     work_t *work = &step->work[i];
     work->ops = hwloc_bitmap_isset(set1, arg->cpu) ? ops1 : ops2;
-    work->arg = NULL;
+    work->arg = hwloc_bitmap_isset(set1, arg->cpu) ? ops1->state : ops2->state;
     work->barrier = &step->barrier;
     work->result = &result.data[(unsigned)i * repetitions * num_pmcs];
     work->reps = repetitions;
@@ -371,45 +370,6 @@ run_two_benchmarks(threads_t *workers, benchmark_t *ops1, benchmark_t *ops2,
 }
 
 /**
- * Calculate input size of a benchmark.
- *
- * Calculates the input size of a benchmark, such that the cache is 90% full,
- * with the intention of leaving some space for stack, etc … in the cache. At
- * the same time, the routine calculates the benchmark size such that an integer
- * number of cache lines are used.
- * As a diagnostic the calculated number of bytes and the fill level of the
- * cache are printed.
- *
- * @param name name of the benchmark
- * @param cache_size  total cache size
- * @param cache_line_size size of a cache line
- * @param power power with which the size argument goes into the memory
- *              requirement of the benchmark, i.e. 1 for vectors, 2 for square
- *              matrices.
- * @param data_size sizeof() of the data type used by the benchmark.
- * @param datasets number of datasets used by the benchmark, i.e. number of
- *                  vectors, matrices, …
- **/
-static unsigned tune_size(const char *const name, const uint64_t cache_size,
-                          const unsigned cache_line_size,
-                          const unsigned data_size, const uint16_t power,
-                          const uint16_t datasets) {
-  const double cache_size_ = cache_size * 0.9;
-  const double elems_per_set = cache_size_ / datasets / data_size;
-  const double elems_per_dim = pow(elems_per_set, 1.0 / power);
-  const unsigned num_lines =
-      ((unsigned)elems_per_dim / (cache_line_size / data_size));
-  const unsigned bytes_per_dim_aligned = num_lines * cache_line_size;
-  const unsigned n = bytes_per_dim_aligned / data_size;
-  const double bytes = pow(n, power) * data_size * datasets;
-  const double p = bytes * 100.0 / cache_size;
-
-  fprintf(stderr, "[Cache] --%s-size=%u requires %u bytes of %"PRIu64"k (%5.1f%%)\n",
-          name, n, (unsigned)bytes, cache_size / 1024, p);
-  return n;
-}
-
-/**
  * Tune the rounds parameter such that a pre-defined benchmark runtime is
  * achieved.
  *
@@ -422,7 +382,7 @@ static unsigned tune_size(const char *const name, const uint64_t cache_size,
 static unsigned tune_time(benchmark_t *benchmark, const double target_seconds,
                           const unsigned init_rounds) {
   void *benchmark_arg =
-      (benchmark->init_arg) ? benchmark->init_arg(NULL) : NULL;
+      (benchmark->init_arg) ? benchmark->init_arg(benchmark->state) : NULL;
   const uint64_t start = get_time();
   unsigned rep;
   for (rep = 0; get_time() < start + 1000 * 1000 * 1000UL; ++rep) {
@@ -445,34 +405,16 @@ static unsigned tune_time(benchmark_t *benchmark, const double target_seconds,
   return (unsigned)rounds;
 }
 
-static void tune_benchmarks_size(benchmark_t **benchmarks,
-                                 const unsigned num_benchmarks, char **argv,
-                                 const unsigned argc, const uint64_t cache_size,
-                                 const unsigned cache_line_size) {
-  for (unsigned i = 0; i < num_benchmarks; ++i) {
-    tuning_param_t *p = &benchmarks[i]->params;
-    const char *name = benchmarks[i]->name;
-    const unsigned n = tune_size(name, cache_size, cache_line_size,
-                                 p->data_size, p->power, p->datasets);
-    asprintf(&argv[argc + i], "--%s-size=%u", name, n);
-  }
-
-  fprintf(stderr, "[Cache] ");
-  for (unsigned i = 0; i < num_benchmarks; ++i) {
-    fprintf(stderr, "%s ", argv[argc + i]);
-  }
-  fprintf(stderr, "\n");
-}
-
 static void tune_benchmarks_time(benchmark_t **benchmarks,
                                  const unsigned num_benchmarks, char *argv[],
-                                 const unsigned argc, const double time) {
+                                 const unsigned argc, const double time,
+                                 const benchmark_config_t *const config) {
   const unsigned rounds = 10;
   for (unsigned i = 0; i < num_benchmarks; ++i) {
     asprintf(&argv[argc + i], "--%s-rounds=%u", benchmarks[i]->name, rounds);
   }
 
-  init_benchmarks((int)(argc + num_benchmarks), argv);
+  init_benchmarks((int)(argc + num_benchmarks), argv, config);
 
   for (unsigned i = 0; i < num_benchmarks; ++i) {
     free(argv[argc + i]);
@@ -715,15 +657,15 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  benchmark_config_t config = {size, 0.9, l1.linesize, 1};
+
   if (tune) {
-    const unsigned num_args = num_benchmarks * 2 + 1;
+    const unsigned num_args = num_benchmarks + 1;
     char **myargv = (char **)malloc(sizeof(char *) * num_args);
     myargv[0] = ""; // the first arg for getopt to skip over.
-    fprintf(stderr, "Tuning size parameter:\n");
-    tune_benchmarks_size(benchmarks, num_benchmarks, myargv, 1, size, l1.linesize );
     fprintf(stderr, "Tuning rounds parameter:\n");
-    tune_benchmarks_time(benchmarks, num_benchmarks, myargv, num_benchmarks + 1,
-                         time);
+    tune_benchmarks_time(benchmarks, num_benchmarks, myargv, 1,
+                         time, &config);
     for (unsigned i = 1; i < num_args; ++i) {
       free(myargv[i]);
     }
@@ -732,23 +674,22 @@ int main(int argc, char *argv[]) {
   }
 
   if (auto_tune) {
-    /* alloc space for input argv + *-size= and *-rounds= parameters */
+    /* alloc space for input argv + *-rounds= parameters */
     unsigned idx = (unsigned)argc;
-    const unsigned num_args = num_benchmarks * 2 + idx;
+    const unsigned num_args = num_benchmarks + idx;
     char **myargv = (char **)malloc(sizeof(char *) * num_args);
     memcpy(myargv, argv, idx * sizeof(char *));
-    tune_benchmarks_size(benchmarks, num_benchmarks, myargv, idx, size,
-                         l1.linesize);
-    idx += num_benchmarks;
 
-    tune_benchmarks_time(benchmarks, num_benchmarks, myargv, idx, time);
-    init_benchmarks((int)(idx + num_benchmarks), myargv);
+    tune_benchmarks_time(benchmarks, num_benchmarks, myargv, idx, time,
+                         &config);
+    config.verbose = 0;
+    init_benchmarks((int)(idx + num_benchmarks), myargv, &config);
     for (unsigned i = (unsigned)argc; i < num_args; ++i) {
       free(myargv[i]);
     }
     free(myargv);
   } else {
-    init_benchmarks(argc, argv);
+    init_benchmarks(argc, argv, &config);
   }
 
   if (policy >= NR_POLICIES) {

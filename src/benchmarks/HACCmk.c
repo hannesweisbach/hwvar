@@ -70,6 +70,7 @@ static p3f_t Step10_orig(const unsigned count1, const float xxi,
 // TODO: clear cache after each run?
 static unsigned int N = 15000; /* Vector length, must be divisible by 4 */
 static int iterations = 1;
+static const char *const name = "HACCmk";
 
 typedef struct {
   float *xx;
@@ -83,9 +84,25 @@ typedef struct {
   //char M1[NC], M2[NC];
 } HACCmk_args_t;
 
-static void HACCmk_init(int argc, char *argv[]) {
+static void HACCmk_init(int argc, char *argv[],
+                        const benchmark_config_t *const config) {
+  N = tune_size(name, config, sizeof(float), 7, 1);
+  if (N < 400) {
+    fprintf(stderr,
+            "Vector size must be at least 400; adjusted from %u to 400.\n", N);
+    N = 400;
+  }
+
+  if ((N % 4) != 0) {
+    unsigned tmp = N;
+    N = N + (4 - (N % 4));
+    fprintf(stderr,
+            "Vector size must be divisible by 4; adjusted from %u to %u\n", tmp,
+            N);
+    exit(EXIT_FAILURE);
+  }
+
   static struct option longopts[] = {
-      {"HACCmk-size", required_argument, NULL, 's'},
       {"HACCmk-rounds", required_argument, NULL, 'i'},
       {NULL, 0, NULL, 0}};
 
@@ -95,26 +112,6 @@ static void HACCmk_init(int argc, char *argv[]) {
       break;
     errno = 0;
     switch (c) {
-    case 's': {
-      long tmp = strtol(optarg, NULL, 0);
-      if (errno == EINVAL || errno == ERANGE || tmp > INT_MAX) {
-        fprintf(stderr, "Could not parse --HACCmk-size argument '%s': %s\n",
-                optarg, strerror(errno));
-        exit(EXIT_FAILURE);
-      }
-
-      if (tmp < 400) {
-        fprintf(stderr, "Vector size must be at least 400\n");
-        exit(EXIT_FAILURE);
-      }
-
-      if ((tmp % 4) != 0) {
-        fprintf(stderr, "Vector size must be divisible by 4\n");
-        exit(EXIT_FAILURE);
-      }
-
-      N = (unsigned)tmp;
-    } break;
     case 'i': {
       long tmp = strtol(optarg, NULL, 0);
       if (errno == EINVAL || errno == ERANGE || tmp > INT_MAX) {
@@ -223,13 +220,11 @@ static void *HACCmk_work(void *arg_) {
   return NULL;
 }
 
-benchmark_t HACCmk_ops = {
-    .name = "HACCmk",
-    .init = HACCmk_init,
-    .init_arg = HACCmk_argument_init,
-    .reset_arg = NULL,
-    .free_arg = HACCmk_argument_destroy,
-    .call = HACCmk_work,
-    .state = NULL,
-    .params = {.data_size = sizeof(float), .datasets = 7, .power = 1}};
+benchmark_t HACCmk_ops = {.name = name,
+                          .init = HACCmk_init,
+                          .init_arg = HACCmk_argument_init,
+                          .reset_arg = NULL,
+                          .free_arg = HACCmk_argument_destroy,
+                          .call = HACCmk_work,
+                          .state = NULL};
 

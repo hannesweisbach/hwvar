@@ -179,11 +179,13 @@ enum type {
   NTYPES
 };
 
+static const char *const name[NTYPES] = {
+    "STREAM_Copy", "STREAM_Scale", "STREAM_Add", "STREAM_Triad", "STREAM"};
+static size_t size[NTYPES];
 static int ntimes[NTYPES] = {
     10, 10, 10, 10, 10,
 };
-
-static ssize_t STREAM_ARRAY_SIZE = 10000000;
+static const unsigned datasets[NTYPES] = {2, 2, 3, 3, 3};
 
 static int parse_int(const char *opt, const char *name) {
   errno = 0;
@@ -196,14 +198,18 @@ static int parse_int(const char *opt, const char *name) {
   return (int)tmp;
 }
 
-static void STREAM_Init(int argc, char *argv[]) {
+static void STREAM_Init(int argc, char *argv[],
+                        const benchmark_config_t *const config) {
+  for (int i = 0; i < NTYPES; ++i) {
+    size[i] = tune_size(name[i], config, sizeof(STREAM_TYPE), datasets[i], 1);
+  }
+
   static struct option longopts[] = {
       {"STREAM_Copy-rounds", required_argument, NULL, 0},
       {"STREAM_Scale-rounds", required_argument, NULL, 1},
       {"STREAM_Add-rounds", required_argument, NULL, 2},
       {"STREAM_Triad-rounds", required_argument, NULL, 3},
       {"STREAM-rounds", required_argument, NULL, 4},
-      {"STREAM-size", required_argument, NULL, 's'},
       {NULL, 0, NULL, 0}};
 
   while (1) {
@@ -219,14 +225,6 @@ static void STREAM_Init(int argc, char *argv[]) {
     case 4:
       ntimes[c] = parse_int(optarg, longopts[c].name);
       break;
-    case 's': {
-      long long tmp = strtoll(optarg, NULL, 0);
-      if (errno == EINVAL || errno == ERANGE || tmp < 0) {
-        fprintf(stderr, "Could not parse --STREAM-size argument '%s': %s\n",
-                optarg, strerror(errno));
-      }
-      STREAM_ARRAY_SIZE = tmp;
-    } break;
     case ':':
     default:;
     }
@@ -234,25 +232,36 @@ static void STREAM_Init(int argc, char *argv[]) {
 }
 
 static void *STREAM_argument_init(void *arg_) {
-  assert(arg_ == NULL);
+  const unsigned datasets = *(const unsigned *)arg_;
+
   STREAM_t *arg = (STREAM_t *)malloc(sizeof(STREAM_t));
   if (arg == NULL) {
     exit(EXIT_FAILURE);
   }
 
-  size_t size = (unsigned long long)STREAM_ARRAY_SIZE + OFFSET;
-  arg->a = (STREAM_TYPE *)malloc(sizeof(STREAM_TYPE) * size);
-  arg->b = (STREAM_TYPE *)malloc(sizeof(STREAM_TYPE) * size);
-  arg->c = (STREAM_TYPE *)malloc(sizeof(STREAM_TYPE) * size);
+  size_t size_ = (datasets == 2) ? size[COPY] : size[ALL];
 
-  if (arg->a == NULL || arg->b == NULL || arg->c == NULL) {
+  arg->a = (STREAM_TYPE *)malloc(sizeof(STREAM_TYPE) * size_);
+  arg->b = (STREAM_TYPE *)malloc(sizeof(STREAM_TYPE) * size_);
+
+  if (arg->a == NULL || arg->b == NULL) {
     exit(EXIT_FAILURE);
   }
 
-  for (int j = 0; j < STREAM_ARRAY_SIZE; j++) {
+  if (datasets == 3) {
+    arg->c = (STREAM_TYPE *)malloc(sizeof(STREAM_TYPE) * size_);
+    if (arg->c == NULL) {
+      exit(EXIT_FAILURE);
+    }
+  }
+
+
+  for (size_t j = 0; j < size_; j++) {
     arg->a[j] = 1.0;
     arg->b[j] = 2.0;
-    arg->c[j] = 0.0;
+    if (datasets == 3) {
+      arg->c[j] = 0.0;
+    }
   }
 
   return arg;
@@ -267,91 +276,89 @@ static void STREAM_argument_destroy(void *arg_) {
   free(arg);
 }
 
+static void STREAM_Copy_(STREAM_TYPE *const a, STREAM_TYPE *const b,
+                          const ssize_t size, const int n) {
+  for (int k = 0; k < n; ++k) {
+    for (ssize_t j = 0; j < size; j++)
+      b[j] = a[j];
+  }
+}
+
+static void STREAM_Scale_(STREAM_TYPE *const a, STREAM_TYPE *const b,
+                          const STREAM_TYPE scalar, const ssize_t size,
+                          const int n) {
+  for (int k = 0; k < n; ++k) {
+    for (ssize_t j = 0; j < size; j++)
+      b[j] = scalar * a[j];
+  }
+}
+
+static void STREAM_Add_(STREAM_TYPE *const a, STREAM_TYPE *const b,
+                        STREAM_TYPE *const c, const ssize_t size, const int n) {
+  for (int k = 0; k < n; ++k) {
+    for (ssize_t j = 0; j < size; j++)
+      c[j] = a[j] + b[j];
+  }
+}
+
+static void STREAM_Triad_(STREAM_TYPE *const a, STREAM_TYPE *const b,
+                          STREAM_TYPE *const c, const STREAM_TYPE scalar,
+                          const ssize_t size, const int n) {
+  for (int k = 0; k < n; ++k) {
+    for (ssize_t j = 0; j < size; j++)
+      a[j] = b[j] + scalar * c[j];
+  }
+}
+
 static void *STREAM_Copy_call(void *arg_) {
   STREAM_t *arg = (STREAM_t *)arg_;
-
-  for (int k = 0; k < ntimes[COPY]; ++k) {
-    for (ssize_t j = 0; j < STREAM_ARRAY_SIZE; j++)
-      arg->c[j] = arg->a[j];
-  }
-
+  STREAM_Copy_(arg->a, arg->b, size[COPY], ntimes[COPY]);
   return NULL;
 }
 
 static void *STREAM_Scale_call(void *arg_) {
   STREAM_t *arg = (STREAM_t *)arg_;
-  const STREAM_TYPE scalar = (STREAM_TYPE)3.0;
-
-  for (int k = 0; k < ntimes[SCALE]; ++k) {
-    for (ssize_t j = 0; j < STREAM_ARRAY_SIZE; j++)
-      arg->b[j] = scalar * arg->c[j];
-  }
-
+  STREAM_Scale_(arg->b, arg->a, (STREAM_TYPE)3.0, size[SCALE], ntimes[SCALE]);
   return NULL;
 }
 
 static void *STREAM_Add_call(void *arg_) {
   STREAM_t *arg = (STREAM_t *)arg_;
-
-  for (int k = 0; k < ntimes[ADD]; ++k) {
-    for (ssize_t j = 0; j < STREAM_ARRAY_SIZE; j++)
-      arg->c[j] = arg->a[j] + arg->b[j];
-  }
-
+  STREAM_Add_(arg->a, arg->b, arg->c, size[ADD], ntimes[ADD]);
   return NULL;
 }
 
 static void *STREAM_Triad_call(void *arg_) {
   STREAM_t *arg = (STREAM_t *)arg_;
-  const STREAM_TYPE scalar = (STREAM_TYPE)3.0;
-
-  for (int k = 0; k < ntimes[TRIAD]; ++k) {
-    for (ssize_t j = 0; j < STREAM_ARRAY_SIZE; j++)
-      arg->a[j] = arg->b[j] + scalar * arg->c[j];
-  }
-
+  STREAM_Triad_(arg->a, arg->b, arg->c, (STREAM_TYPE)3.0, size[TRIAD],
+                ntimes[TRIAD]);
   return NULL;
 }
 
 static void *STREAM_call(void *arg_) {
   STREAM_t *arg = (STREAM_t *)arg_;
-  int ntimes_copy[NTYPES];
-  memcpy(&ntimes_copy, &ntimes, sizeof(ntimes));
-  for (int i = COPY; i < ALL; ++i) {
-    ntimes[i] = 1;
-  }
+
+  const size_t size_ = size[ALL];
 
   for (int k = 0; k < ntimes[ALL]; ++k) {
-    STREAM_Copy_call(arg);
-    STREAM_Scale_call(arg);
-    STREAM_Add_call(arg);
-    STREAM_Triad_call(arg);
+    STREAM_Copy_(arg->a, arg->b, size_, 1);
+    STREAM_Scale_(arg->b, arg->a, (STREAM_TYPE)3.0, size_, 1);
+    STREAM_Add_(arg->a, arg->b, arg->c, size_, 1);
+    STREAM_Triad_(arg->a, arg->b, arg->c, (STREAM_TYPE)3.0, size_, 1);
   }
-
-  memcpy(&ntimes, &ntimes_copy, sizeof(ntimes));
 
   return NULL;
 }
 
 benchmark_t STREAM_Copy = {
-    "STREAM_Copy",
-    STREAM_Init,
-    STREAM_argument_init,
-    NULL,
-    STREAM_argument_destroy,
-    STREAM_Copy_call,
-    NULL,
-    .params = {.data_size = sizeof(STREAM_TYPE), .datasets = 3, .power = 1}};
+    "STREAM_Copy",           STREAM_Init,      STREAM_argument_init,    NULL,
+    STREAM_argument_destroy, STREAM_Copy_call, (void *)&datasets[COPY],
+};
 
 benchmark_t STREAM_Scale = {
-    "STREAM_Scale",
-    STREAM_Init,
-    STREAM_argument_init,
-    NULL,
-    STREAM_argument_destroy,
-    STREAM_Scale_call,
-    NULL,
-    .params = {.data_size = sizeof(STREAM_TYPE), .datasets = 3, .power = 1}};
+    "STREAM_Scale",          STREAM_Init,       STREAM_argument_init,     NULL,
+    STREAM_argument_destroy, STREAM_Scale_call, (void *)&datasets[SCALE],
+};
 
 benchmark_t STREAM_Add = {
     "STREAM_Add",
@@ -360,18 +367,13 @@ benchmark_t STREAM_Add = {
     NULL,
     STREAM_argument_destroy,
     STREAM_Add_call,
-    NULL,
-    .params = {.data_size = sizeof(STREAM_TYPE), .datasets = 3, .power = 1}};
+    (void *)&datasets[ADD],
+};
 
 benchmark_t STREAM_Triad = {
-    "STREAM_Triad",
-    STREAM_Init,
-    STREAM_argument_init,
-    NULL,
-    STREAM_argument_destroy,
-    STREAM_Triad_call,
-    NULL,
-    .params = {.data_size = sizeof(STREAM_TYPE), .datasets = 3, .power = 1}};
+    "STREAM_Triad",          STREAM_Init,       STREAM_argument_init,     NULL,
+    STREAM_argument_destroy, STREAM_Triad_call, (void *)&datasets[TRIAD],
+};
 
 benchmark_t STREAM = {
     "STREAM",
@@ -380,6 +382,6 @@ benchmark_t STREAM = {
     NULL,
     STREAM_argument_destroy,
     STREAM_call,
-    NULL,
-    .params = {.data_size = sizeof(STREAM_TYPE), .datasets = 3, .power = 1}};
+    (void *)&datasets[ALL],
+};
 

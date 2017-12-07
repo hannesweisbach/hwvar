@@ -517,8 +517,9 @@ static int sha256_test(void) {
 
 #include "sha256.h"
 
-static unsigned long size = 30 * 1024;
+static unsigned long size;
 static unsigned long iterations = 10 * 1000;
+static const char *const name = "sha256";
 
 typedef struct {
   hash_state md;
@@ -526,11 +527,13 @@ typedef struct {
   unsigned long length;
 } SHA256_t;
 
-static void SHA256_Init(int argc, char *argv[]) {
+static void SHA256_Init(int argc, char *argv[],
+                        const benchmark_config_t *const config) {
   assert(sha256_test() == CRYPT_OK);
 
+  size = tune_size(name, config, sizeof(char), 1, 1);
+
   static struct option longopts[] = {
-      {"sha256-size", required_argument, NULL, 's'},
       {"sha256-rounds", required_argument, NULL, 'i'},
       {NULL, 0, NULL, 0}};
 
@@ -540,14 +543,6 @@ static void SHA256_Init(int argc, char *argv[]) {
       break;
     errno = 0;
     switch (c) {
-    case 's': {
-      size = strtoul(optarg, NULL, 0);
-      if (errno == EINVAL || errno == ERANGE) {
-        fprintf(stderr, "Could not parse --sha256-size argument '%s': %s\n",
-                optarg, strerror(errno));
-        exit(EXIT_FAILURE);
-      }
-    } break;
     case 'i': {
       iterations = strtoul(optarg, NULL, 0);
       if (errno == EINVAL || errno == ERANGE) {
@@ -600,12 +595,12 @@ static void *SHA256_call(void *arg_) {
 }
 
 benchmark_t SHA256 = {
-    "sha256",
+    name,
     SHA256_Init,
     SHA256_argument_init,
     NULL,
     SHA256_argument_destroy,
     SHA256_call,
     NULL,
-    .params = {.data_size = sizeof(char), .datasets = 1, .power = 1}};
+};
 

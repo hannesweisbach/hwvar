@@ -8,7 +8,8 @@
 #include "fwq.h"
 
 static int rounds = 10;
-static void fwq_init(int argc, char *argv[]) {
+static void fwq_init(int argc, char *argv[],
+                     const benchmark_config_t *const config) {
   static struct option longopts[] = {
       {"fwq-rounds", required_argument, NULL, 'r'}, {NULL, 0, NULL, 0}};
 
@@ -56,5 +57,5 @@ benchmark_t fwq_ops = {
     .free_arg = NULL,
     .call = call_work,
     .state = NULL,
-    .params = {.data_size = sizeof(double), .datasets = 3, .power = 2}};
+};
 

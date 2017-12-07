@@ -283,7 +283,8 @@ struct minife_args {
 static miniFE::Parameters params;
 static int rounds = 10;
 
-static void minife_init(int argc, char *argv[]) {
+static void minife_init(int argc, char *argv[],
+                        const benchmark_config_t *const config) {
   static struct option longopts[] = {
       {"minife-rounds", required_argument, NULL, 'r'},
       {NULL, 0, NULL, 0}};
@@ -336,6 +337,5 @@ static void *minife(void *arg_) {
   return NULL;
 }
 
-benchmark_t minife_ops = {
-    "minife", minife_init, init_argument, NULL,
-    NULL,    minife, NULL,          {sizeof(double), 63, 3}};
+benchmark_t minife_ops = {"minife", minife_init, init_argument, NULL,
+                          NULL,     minife,      NULL};
