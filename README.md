@@ -85,6 +85,36 @@ additionally runs the benchmark(s) with the estimated rounds values.
 The `--time` option takes only effect when used with the `--tune` or `--auto`
 option.
 
+## Additional Performance Counters
+
+Additional platform-specific performance counters can be samples with the
+`--pmcs` options. The option takes a comma-separated list of
+(architecture-specific) event names.
+
+### x86_64
+
+On x86_64 performance counters are accessed using Andi Kleen's
+[pmu-tools/libjevents](https://github.com/andikleen/pmu-tools). The
+`listevents` command gives you a list of available performance counters for
+your processor. Ask Intel what mean and if they actually work and/or count what
+you think they count and/or what Intel documented they should count.
+
+### AArch64
+
+If you implementation supports ARM PMUv3 you can currently specificy the
+follwoing events:
+
+- L1I_CACHE_REFILL
+- L1D_CACHE_REFILL
+- L1D_CACHE
+- MEM_ACCESS
+- L2D_CACHE
+- L2D_CACHE_REFILL
+
+### Sparc64
+
+Not implemented/supported.
+
 ## Building
 
 Currently autotools and CMake are supported. For boths build systems out-of-tree
