@@ -53,16 +53,6 @@ code has been removed from the benchmark kernel.
 
 ## Benchmark setup and options
 
-Each of the benchmarks can individually be tuned for the working set size of its
-data and the runtime. Because benchmarks kernels have different notions of
-problem size, each benchmark has a `--<benchmark name>-size` option. The
-`--<benchmark name>-rounds` option gives the number of times a benchmark kernel
-is called to achieve the desired overall runtime.
-
-The `--tune` options determines/estimates the numbers for the options
-automatically. To also run the benchmarks with the calculated problem size use
-the `--auto` option.
-
 The `--size` option specifies the desired working set size, the L1 cache size as
 determined by hwloc is used as the default. The benchmark is tuned to use 90% of
 the given capacity, so that spare capacity is available for stack data, etc. The
@@ -71,14 +61,29 @@ supported for kibi, mebi and gibi. Because the benchmark might not be able to
 use the selected size completely, the actual size and percentage of the selected
 size are printed.
 
+Each benchmark is responsible for finding appropriate parameters to fulfill the
+size requirement.
+
+With the problem size fixed via the `--size` option, the benchmark runtime can
+be adjusted with the `--<benchmark name>-rounds` option. The rounds option
+determines how often a benchmark kernel is called in a loop  to make up one
+sample. This way it is possible to run the benchmark for a fixed amount of
+work.
+
 The `--time` options sets the desired runtime in seconds. The default is 20s.
 With the working set size set, the benchmark is run 10 times to get an
 approximate runtime for a single invocation. This value is then used to
 approximate the number of invocation required to get the selected aggregate
 runtime.
 
-The `--size` and `--time` options take only effect when used with the `--tune`
-or `--auto` option.
+If the benchmark should run for an (approximate) amount of wall clock time, the
+`--tune` and `--auto` options can be used. The `--tune` options estimates and
+prints the required number of rounds to approximately achieve a wall clock
+runtime specified with the `--time` parameter. The `--auto` parameter
+additionally runs the benchmark(s) with the estimated rounds values.
+
+The `--time` option takes only effect when used with the `--tune` or `--auto`
+option.
 
 ## Building
 
