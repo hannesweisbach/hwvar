@@ -31,6 +31,7 @@ struct arg {
   enum state s;
   short run;
   short dirigent;
+  int do_binding;
 };
 
 typedef struct thread_data {

@@ -91,21 +91,24 @@ void *worker(void *arg_) {
   // get & check cpu no
   // potentially set_affinity / report back cpu no?
 
+  int err;
   struct arg *arg = (struct arg *)arg_;
   arg->run = 1;
 
   pthread_mutex_lock(&arg->lock);
   int dirigent = arg->dirigent;
-  fprintf(stderr, "Binding thread %d to CPU %s\n", arg->thread, arg->cpuset_string);
-  /*
-   * hwloc_cpuset_t current = hwloc_cpuset_alloc();
-   * int hwloc_get_last_cpu_location(arg->topology,current,
-   *                                 HWLOC_CPUBIND_THREAD);
-   */
-  int err = hwloc_set_cpubind(arg->topology, arg->cpuset, HWLOC_CPUBIND_THREAD);
-  if (err) {
-    fprintf(stderr, "Error binding thread %d to CPU %d: %d\n", arg->thread,
-            arg->cpu, err);
+  if (arg->do_binding) {
+      fprintf(stderr, "Binding thread %d to CPU %s\n", arg->thread, arg->cpuset_string);
+      /*
+       * hwloc_cpuset_t current = hwloc_cpuset_alloc();
+       * int hwloc_get_last_cpu_location(arg->topology,current,
+       *                                 HWLOC_CPUBIND_THREAD);
+       */
+      err = hwloc_set_cpubind(arg->topology, arg->cpuset, HWLOC_CPUBIND_THREAD);
+      if (err) {
+          fprintf(stderr, "Error binding thread %d to CPU %d: %d\n", arg->thread,
+                  arg->cpu, err);
+      }
   }
 
   pthread_mutex_unlock(&arg->lock);
