@@ -180,6 +180,7 @@ Module gcc/7.1.0 loaded.
 export CFLAGS="-O3 -ffast-math -ftree-vectorize"
 export CXXFLAGS="-O3 -ffast-math -ftree-vectorize"
 cmake ../hwvar/ -DCMAKE_BUILD_TYPE=Release
+```
 
 ### Examples Compiling with icc
 
