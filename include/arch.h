@@ -190,7 +190,7 @@ static inline uint64_t arch_timestamp_end(void) {
   return (uint64_t)high << 32ULL | low;
 }
 
-#ifdef HAVE_RDPMC_H
+#ifdef JEVENTS_FOUND 
 #include <jevents.h>
 #include <rdpmc.h>
 
@@ -248,7 +248,7 @@ static void arch_pmu_end(struct pmu *pmus, uint64_t *data) {
   }
 }
 
-#else /* HAVE_RDPMC_H */
+#else /* JEVENTS_FOUND */
 
 static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs) {
   if (num_pmcs) {
@@ -261,7 +261,7 @@ static void arch_pmu_free(struct pmu *pmus) {}
 static void arch_pmu_begin(struct pmu *pmus, uint64_t *data) {}
 static void arch_pmu_end(struct pmu *pmus, uint64_t *data) {}
 
-#endif /* HAVE_RDPMC_H */
+#endif /* JEVENTS_FOUND */
 
 #else
 

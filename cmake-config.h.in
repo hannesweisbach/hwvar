@@ -1,4 +1,4 @@
 #cmakedefine HAVE_SCHED_H
 #cmakedefine HAVE_PTHREAD_BARRIER_T
 #cmakedefine HAVE_CLOCK_GETTIME
-#cmakedefine HAVE_RDPMC_H
+#cmakedefine JEVENTS_FOUND

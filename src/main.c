@@ -14,7 +14,7 @@
 
 #include "dgemm.h"
 
-#ifdef HAVE_RDPMC_H
+#ifdef JEVENTS_FOUND
 #include <rdpmc.h>
 #include <jevents.h>
 #endif
@@ -483,7 +483,7 @@ int main(int argc, char *argv[]) {
     hwloc_topology_restrict(topology, restricted, 0);
   }
 
-#ifdef HAVE_RDPMC_H
+#ifdef JEVENTS_FOUND
   // Initialize the racy libjevents.
   read_events(NULL);
 #endif
