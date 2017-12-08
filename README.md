@@ -51,6 +51,13 @@ benchmark kernel.
 The MiniFE mini app from the Mantevo benchmark suite. Time measurement and I/O
 code has been removed from the benchmark kernel.
 
+### Capacity
+
+The capacity benchmark accesses each cache line of an array of twice the
+working set size alternating between reads and writes. The intention is to
+deterministically cause cache misses and measure the number of cache misses and
+the performance variation caused by cache misses.
+
 ## Benchmark setup and options
 
 The `--size` option specifies the desired working set size, the L1 cache size as
