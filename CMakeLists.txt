@@ -55,12 +55,15 @@ else()
   check_function_exists(clock_gettime HAVE_CLOCK_GETTIME)
 endif()
 
-include(FindPackageHandleStandardArgs)
+find_path(JEVENTS_INCDIR
+  NAMES jevents.h
+  HINTS ${JEVENTS_DIR}
+  PATH_SUFFIXES "include" "include/jevents")
 find_library(JEVENTS_LIBRARIES jevents
   HINTS ${JEVENTS_DIR}
   PATH_SUFFIXES lib lib32 lib64)
-check_include_files(rdpmc.h HAVE_RDPMC_H)
-find_package_handle_standard_args(JEVENTS DEFAULT_MSG JEVENTS_LIBRARIES HAVE_RDPMC_H)
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(JEVENTS DEFAULT_MSG JEVENTS_LIBRARIES JEVENTS_INCDIR)
 
 include_directories(include ${CMAKE_CURRENT_BINARY_DIR})
 
