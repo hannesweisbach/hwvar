@@ -399,12 +399,16 @@ static unsigned tune_time(benchmark_t *benchmark, const double target_seconds,
   const double rounds = (target_seconds * 1e9 * rep * init_rounds) / duration;
   const double rounds_i = nearbyint(rounds);
   assert(rounds <= UINT_MAX);
-  const double runtime = rounds_i / rep * duration / 1e9 / init_rounds;
+  unsigned ret = (unsigned)rounds_i;
+  if (ret < 1) {
+    ret = 1;
+  }
+  const double runtime = ret / rep * duration / 1e9 / init_rounds;
 
-  fprintf(stderr, "[Time] --%s-rounds=%u (~%4.1fs)\n", benchmark->name,
-          (unsigned)rounds, runtime);
+  fprintf(stderr, "[Time] --%s-rounds=%u (~%4.1fs)\n", benchmark->name, ret,
+          runtime);
 
-  return (unsigned)rounds;
+  return ret;
 }
 
 static void tune_benchmarks_time(benchmark_t **benchmarks,
