@@ -101,6 +101,12 @@ static void HACCmk_init(int argc, char *argv[],
     exit(EXIT_FAILURE);
   }
 
+  if (N > 15000) {
+    unsigned tmp = N;
+    N = 15000;
+    fprintf(stderr, "Limit HACCmk size to %u; adjusted from %u\n", N, tmp);
+  }
+
   static struct option longopts[] = {
       {"HACCmk-rounds", required_argument, NULL, 'i'},
       {NULL, 0, NULL, 0}};
@@ -173,7 +179,7 @@ static void *HACCmk_work(void *arg_) {
   const float fcoeff = 0.23f;
   const float fsrrmax2 = 0.5f;
   const float mp_rsm2 = 0.03f;
-  const int count = 50; //327; // make HACCmk a bit more fine-grained
+  const int count = 1; //327; // make HACCmk a bit more fine-grained
 
   HACCmk_args_t *arg = (HACCmk_args_t *)arg_;
 
