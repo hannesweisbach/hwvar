@@ -45,6 +45,7 @@ check_include_files(sched.h HAVE_SCHED_H)
 check_type_size(pthread_barrier_t HAVE_PTHREAD_BARRIER_T LANGUAGE C)
 
 find_package(HWLOC REQUIRED)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -I${HWLOC_INCLUDE_DIRS}")
 
 check_library_exists("rt" clock_gettime "" HAVE_LIBRT)
 if(HAVE_LIBRT)
