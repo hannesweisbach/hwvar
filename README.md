@@ -138,7 +138,7 @@ standard directory, it has to made available manually.
 Don't forget to add optimization flags specific to your compiler, unless you
 want to benchmark unoptimized code!
 
-### Examples Compiling with fcc
+### Examples Compiling with Fujitsu compiler
 
 For example, to compile the benchmark suite using fcc and hwloc installed in
 `~/install/hwloc` issue the following commands:
@@ -149,8 +149,8 @@ export LD_LIBRARY_PATH=${HWLOC_DIR}/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
 export CPPFLAGS="-I${HWLOC_DIR}/include/"
 export LDFLAGS="-L${HWLOC_DIR}/lib/"
 export CFLAGS="-Xg -std=gnu99 -Xg -Kfast"
-export CC=/opt/FJSVmxlang/GM-2.0.0-05/bin/fcc 
-export CXX=/opt/FJSVmxlang/GM-2.0.0-05/bin/fcc (or fpp, or f++?)
+export CC=/opt/FJSVmxlang/GM-2.0.0-05/bin/fccpx 
+export CXX=/opt/FJSVmxlang/GM-2.0.0-05/bin/FCCpx
 
 <path to source>/configure --build=sparc64-unknown-linux-gnu --host=sparc64-unknown-linux-gnu
 ```
