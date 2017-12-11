@@ -78,6 +78,7 @@ static void return_finished_work(struct arg *arg, work_t *work) {
   pthread_mutex_unlock(&arg->lock);
 }
 
+#ifndef __sparc
 static uint64_t get_time() {
   struct timespec ts;
 #ifdef HAVE_CLOCK_GETTIME
@@ -86,6 +87,7 @@ static uint64_t get_time() {
 
   return (uint64_t)ts.tv_sec * 1000 * 1000 * 1000 + (uint64_t)ts.tv_nsec;
 }
+#endif
 
 void *worker(void *arg_) {
   // get & check cpu no
