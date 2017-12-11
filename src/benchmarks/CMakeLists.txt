@@ -11,7 +11,7 @@ set(HPCCG_SRC HPCCG/generate_matrix.cpp HPCCG/compute_residual.cpp
 #YAML: HPCCG/YAML_Element.cpp HPCCG/YAML_Doc.cpp
 #MPI: HPCCG/make_local_matrix.cpp HPCCG/exchange_externals.cpp HPCCG/mytimer.cpp
 
-add_library(MiniFE minife.c++
+add_library(MiniFE minife.cpp
   MiniFE/ref/utils/param_utils.cpp
   MiniFE/ref/utils/utils.cpp
   MiniFE/ref/utils/BoxPartition.cpp
@@ -30,6 +30,6 @@ set_property(TARGET MiniFE APPEND PROPERTY COMPILE_DEFINITIONS
   MINIFE_KERNELS=0
 )
 
-add_library(benchmark benchmark.c dgemm.c sha256.c HACCmk.c stream.c fwq.c capacity.c++ hpccg.c++ ${HPCCG_SRC})
+add_library(benchmark benchmark.c dgemm.c sha256.c HACCmk.c stream.c fwq.c capacity.cpp hpccg.cpp ${HPCCG_SRC})
 target_include_directories(benchmark PUBLIC .)
 target_link_libraries(benchmark LINK_PUBLIC MiniFE)
