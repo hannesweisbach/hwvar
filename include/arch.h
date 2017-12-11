@@ -153,7 +153,7 @@ static void arch_pmu_end(struct pmu *pmus, uint64_t *data) {
 
 static inline uint64_t timestamp() {
   uint64_t value;
-  __asm__ volatile("rd %%tick %0\n" : "=r"(value));
+  __asm__ volatile("rd %%tick, %0\n" : "=r"(value));
   return value;
 }
 
