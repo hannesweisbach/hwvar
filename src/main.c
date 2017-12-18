@@ -521,6 +521,16 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
+  {
+    const int thissystem = hwloc_topology_is_thissystem(topology);
+    fprintf(stderr, "Topology is from this system: %s",
+            thissystem ? "yes" : "no");
+    if (!hwloc_topology_is_thissystem(topology)) {
+      fprintf(stdout, " thread binding will not work.");
+    }
+    fprintf(stdout, "\n");
+  }
+
   hwloc_const_cpuset_t orig = hwloc_topology_get_complete_cpuset(topology);
   if (hwloc_bitmap_weight(orig) == 48) {
     hwloc_cpuset_t restricted = hwloc_bitmap_dup(orig);
