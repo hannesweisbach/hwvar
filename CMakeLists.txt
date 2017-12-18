@@ -28,6 +28,8 @@ else()
     message(STATUS "C compiler is neither clang nor gcc.")
     message(STATUS "Please enable C99 mode manually via CFLAGS for your compiler.")
     message(STATUS "If it is already enable ignore this message.")
+    message(STATUS "Your C compiler identifies as \"${CMAKE_C_COMPILER_ID}\"")
+    message(STATUS "Your C++ compiler identifies as \"${CMAKE_CXX_COMPILER_ID}\"")
   endif()
 endif()
 
