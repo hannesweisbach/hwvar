@@ -31,11 +31,13 @@ else()
   endif()
 endif()
 
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/sanitizer/cmake")
+
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 set(CMAKE_THREAD_PREFER_PTHREAD ON)
 find_package(Threads REQUIRED)
-
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_SOURCE_DIR}/cmake)
+find_package(Sanitizers)
 
 include(CheckIncludeFiles)
 include(CheckTypeSize)

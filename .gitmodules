@@ -6,3 +6,6 @@
 	path = src/benchmarks/MiniFE
 	url = git@github.com:hannesweisbach/MiniFE.git
 	branch = hwperfvar
+[submodule "cmake/sanitizer"]
+	path = cmake/sanitizer
+	url = git://github.com/arsenm/sanitizers-cmake.git
