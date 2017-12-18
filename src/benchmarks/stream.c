@@ -165,6 +165,7 @@
 #endif
 
 typedef struct {
+  STREAM_TYPE *p;
   STREAM_TYPE *a;
   STREAM_TYPE *b;
   STREAM_TYPE *c;
@@ -241,20 +242,19 @@ static void *STREAM_argument_init(void *arg_) {
 
   size_t size_ = (datasets == 2) ? size[COPY] : size[ALL];
 
-  arg->a = (STREAM_TYPE *)malloc(sizeof(STREAM_TYPE) * size_);
-  arg->b = (STREAM_TYPE *)malloc(sizeof(STREAM_TYPE) * size_);
+  arg->p = (STREAM_TYPE *)malloc(sizeof(STREAM_TYPE) * size_ * datasets +
+                                 sizeof(STREAM_TYPE) * OFFSET);
 
-  if (arg->a == NULL || arg->b == NULL) {
+  if (arg->p == NULL) {
     exit(EXIT_FAILURE);
   }
 
-  if (datasets == 3) {
-    arg->c = (STREAM_TYPE *)malloc(sizeof(STREAM_TYPE) * size_);
-    if (arg->c == NULL) {
-      exit(EXIT_FAILURE);
-    }
-  }
+  arg->a = &arg->p[OFFSET];
+  arg->b = &arg->a[size_];
 
+  if (datasets == 3) {
+    arg->c = &arg->b[size_];
+  }
 
   for (size_t j = 0; j < size_; j++) {
     arg->a[j] = 1.0;
@@ -270,9 +270,7 @@ static void *STREAM_argument_init(void *arg_) {
 static void STREAM_argument_destroy(void *arg_) {
   STREAM_t *arg = (STREAM_t *)arg_;
 
-  free(arg->a);
-  free(arg->b);
-  free(arg->c);
+  free(arg->p);
   free(arg);
 }
 
@@ -339,12 +337,13 @@ static void *STREAM_call(void *arg_) {
   STREAM_t *arg = (STREAM_t *)arg_;
 
   const size_t size_ = size[ALL];
+  const int n = 1;//ntimes[ALL];
 
   for (int k = 0; k < ntimes[ALL]; ++k) {
-    STREAM_Copy_(arg->a, arg->b, size_, 1);
-    STREAM_Scale_(arg->b, arg->a, (STREAM_TYPE)3.0, size_, 1);
-    STREAM_Add_(arg->a, arg->b, arg->c, size_, 1);
-    STREAM_Triad_(arg->a, arg->b, arg->c, (STREAM_TYPE)3.0, size_, 1);
+    STREAM_Copy_(arg->a, arg->b, size_, n);
+    STREAM_Scale_(arg->b, arg->a, (STREAM_TYPE)3.0, size_, n);
+    STREAM_Add_(arg->a, arg->b, arg->c, size_, n);
+    STREAM_Triad_(arg->a, arg->b, arg->c, (STREAM_TYPE)3.0, size_, n);
   }
 
   return NULL;
