@@ -234,6 +234,8 @@ static void stop_workers(threads_t *workers) {
     err |= stop_single_worker(&workers->threads[i], step);
   }
 
+  free_step(step);
+
   if (!err) {
     // TODO cleanup.
   }
@@ -293,6 +295,8 @@ static benchmark_result_t run_in_parallel(threads_t *workers, benchmark_t *ops,
     wait_until_done(&workers->threads[i].thread_arg);
   }
 
+  free_step(step);
+
   return result;
 }
 
@@ -342,6 +346,8 @@ static benchmark_result_t run_one_by_one(threads_t *workers, benchmark_t *ops,
     diff = get_time() - begin;
   }
 
+  free_step(step);
+
   return result;
 }
 
@@ -383,6 +389,7 @@ run_two_benchmarks(threads_t *workers, benchmark_t *ops1, benchmark_t *ops2,
   }
 
   hwloc_bitmap_free(cpuset);
+  free_step(step);
 
   return result;
 }

@@ -23,12 +23,16 @@ step_t *init_step(const int threads) {
 
   // TODO: error handling.
   pthread_barrier_init(&step->barrier, NULL, (unsigned)threads);
-  pthread_mutex_init(&step->lock, NULL);
-  pthread_cond_init(&step->cv, NULL);
 
   step->threads = threads;
 
   return step;
+}
+
+void free_step(step_t *step) {
+  pthread_barrier_destroy(&step->barrier);
+  free(step->work);
+  free(step);
 }
 
 void queue_work(struct arg *arg, work_t *work) {
