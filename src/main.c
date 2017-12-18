@@ -273,7 +273,7 @@ static benchmark_result_t run_in_parallel(threads_t *workers, benchmark_t *ops,
   // run dirigent
   assert(workers->threads[0].thread_arg.dirigent);
   worker(&workers->threads[0].thread_arg);
-  for (int i = 1; i < cpus; ++i) {
+  for (int i = 0; i < cpus; ++i) {
     wait_until_done(&workers->threads[i].thread_arg);
   }
 
