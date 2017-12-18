@@ -492,6 +492,24 @@ static unsigned si_suffix_to_factor(int suffix) {
   }
 }
 
+double parse_double(const char *optarg, const char *name, int positive) {
+  errno = 0;
+  char *suffix = NULL;
+  const double value = strtod(optarg, &suffix);
+  if (errno == ERANGE || isnan(value) || isinf(value)) {
+    fprintf(stderr, "Could not parse --%s argument '%s': %s\n", name, optarg,
+            strerror(errno));
+    exit(EXIT_FAILURE);
+  }
+
+  if (positive && value < 0.0) {
+    fprintf(stderr, "--%s argument must be positive", name);
+    exit(EXIT_FAILURE);
+  }
+
+  return value;
+}
+
 int main(int argc, char *argv[]) {
   hwloc_topology_t topology;
   if (hwloc_topology_init(&topology)) {
@@ -524,6 +542,7 @@ int main(int argc, char *argv[]) {
   char *opt_pmcs = NULL;
   unsigned iterations = 13;
   uint64_t size = l1.size;
+  double fill = 0.9;
   double time = 20;
   FILE *output = stdout;
   static int auto_tune = 0;
@@ -543,6 +562,7 @@ int main(int argc, char *argv[]) {
       {"cpuset-1", required_argument, NULL, 1},
       {"cpuset-2", required_argument, NULL, 2},
       {"size", required_argument, NULL, 's'},
+      {"fill", required_argument, NULL, 'f'},
       {"time", required_argument, NULL, 't'},
       {"tune", no_argument, &tune, 1},
       {"auto", no_argument, &auto_tune, 1},
@@ -625,15 +645,12 @@ int main(int argc, char *argv[]) {
         size *= si_suffix_to_factor(*suffix);
       }
     } break;
-    case 't': {
-      errno = 0;
-      char *suffix = NULL;
-      time = strtod(optarg, &suffix);
-      if (errno == ERANGE || time == 0.0 || isnan(time) || isinf(time)) {
-        fprintf(stderr, "Could not parse --iterations argument '%s': %s\n",
-                optarg, strerror(errno));
-      }
-    } break;
+    case 'f':
+      fill = parse_double(optarg, "fill", 1);
+      break;
+    case 't':
+      time = parse_double(optarg, "time", 1);
+      break;
     case ':':
       break;
     default:
@@ -687,7 +704,7 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  benchmark_config_t config = {size, 0.9, l1.linesize, 1};
+  benchmark_config_t config = {size, fill, l1.linesize, 1};
 
   if (tune) {
     const unsigned num_args = num_benchmarks + 1;

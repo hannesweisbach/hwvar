@@ -60,13 +60,15 @@ the performance variation caused by cache misses.
 
 ## Benchmark setup and options
 
-The `--size` option specifies the desired working set size, the L1 cache size as
-determined by hwloc is used as the default. The benchmark is tuned to use 90% of
-the given capacity, so that spare capacity is available for stack data, etc. The
-size option is interpreted in bytes. The suffixes `kK`, `mM`, and `gG` are
-supported for kibi, mebi and gibi. Because the benchmark might not be able to
-use the selected size completely, the actual size and percentage of the selected
-size are printed.
+The `--size` option specifies the desired working set size, the L1 cache size
+as determined by hwloc is used as the default. The benchmark is tuned to use
+90% of the given capacity, so that spare capacity is available for stack data,
+etc. The size option is interpreted in bytes. The suffixes `kK`, `mM`, and `gG`
+are supported for kibi, mebi and gibi. The default fill factor of 0.9 can be
+adjusted with the `--fill` option, which expects a fractional value. For
+example to use the entire cache pass 1 or 1.0 and to use 150% of the cache size
+use 1.5. Because the benchmark might not be able to use the selected size
+completely, the actual size and percentage of the selected size are printed.
 
 Each benchmark is responsible for finding appropriate parameters to fulfill the
 size requirement.
