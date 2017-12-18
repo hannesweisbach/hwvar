@@ -511,7 +511,7 @@ double parse_double(const char *optarg, const char *name, int positive) {
 }
 
 int main(int argc, char *argv[]) {
-  hwloc_topology_t topology;
+  hwloc_topology_t topology = NULL;
   if (hwloc_topology_init(&topology)) {
     printf("hwloc_topology_init failed\n");
     exit(EXIT_FAILURE);
