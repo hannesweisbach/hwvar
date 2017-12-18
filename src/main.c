@@ -147,7 +147,44 @@ static struct hwloc_cache_attr_s l1_attributes(hwloc_topology_t topology) {
   return cache->attr->cache;
 }
 
+typedef struct {
+  uint64_t *data;
+  unsigned threads;
+  unsigned repetitions;
+  unsigned counters;
+} benchmark_result_t;
+
+static benchmark_result_t result_alloc(const unsigned threads,
+                                       const unsigned repetitions,
+                                       const unsigned num_counters) {
+  benchmark_result_t result = {.data = NULL,
+                               .threads = threads,
+                               .repetitions = repetitions,
+                               .counters = num_counters - 1};
+
+  result.data = (uint64_t *)malloc(sizeof(uint64_t) * threads * repetitions *
+                                   num_counters);
+
+  return result;
+}
+
+static void result_free(benchmark_result_t result) { free(result.data); }
+
 #include <benchmark.h>
+
+static benchmark_result_t run_in_parallel(threads_t *workers, benchmark_t *ops,
+                                          const unsigned repetitions,
+                                          const char **pmcs,
+                                          const unsigned num_pmcs);
+
+static void *null_thread(void *arg_) { return arg_; }
+
+static void synchronize_worker_init(threads_t *threads) {
+  benchmark_t null_ops = {"null", NULL, NULL, NULL, NULL, null_thread, NULL};
+
+  benchmark_result_t result = run_in_parallel(threads, &null_ops, 1, NULL, 1);
+  result_free(result);
+}
 
 static void *stop_thread(void *arg_) {
   struct arg *arg = (struct arg *)arg_;
@@ -200,27 +237,6 @@ static void stop_workers(threads_t *workers) {
   if (!err) {
     // TODO cleanup.
   }
-}
-
-typedef struct {
-  uint64_t *data;
-  unsigned threads;
-  unsigned repetitions;
-  unsigned counters;
-} benchmark_result_t;
-
-static benchmark_result_t result_alloc(const unsigned threads,
-                                       const unsigned repetitions,
-                                       const unsigned num_counters) {
-  benchmark_result_t result = {.data = NULL,
-                               .threads = threads,
-                               .repetitions = repetitions,
-                               .counters = num_counters - 1};
-
-  result.data = (uint64_t *)malloc(sizeof(uint64_t) * threads * repetitions *
-                                   num_counters);
-
-  return result;
 }
 
 static void result_print(FILE *file, benchmark_result_t result,
@@ -740,6 +756,8 @@ int main(int argc, char *argv[]) {
 
   threads_t *workers = spawn_workers(topology, runset,
           use_hyperthreads, do_binding);
+
+  synchronize_worker_init(workers);
 
   for (unsigned i = 0; i < num_benchmarks; ++i) {
     benchmark_t *benchmark = benchmarks[i];
