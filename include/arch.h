@@ -310,12 +310,16 @@ static void pmu_info(struct pmu *pmus) {
   printf("FFPCs: %u, width: %u\n", ffpc, ff_width);
 }
 
-//#define JEVENTS
+#ifdef linux
+#define JEVENTS
 //#define PERF
 //#define RAWMSR
+#else
 #define MCK
+//#define RAWMSR
+#endif
 
-#if (defined(JEVENTS) + defined(PERF) + defined(RAWMSR)) > 1
+#if (defined(JEVENTS) + defined(PERF) + defined(RAWMSR) + defined(MCK)) > 1
 #error "More than one PMU method selected."
 #endif
 
