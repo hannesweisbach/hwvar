@@ -263,6 +263,26 @@ static void arch_pmu_end(struct pmu *pmus, uint64_t *data) {}
 
 #endif /* JEVENTS_FOUND */
 
+#elif defined(_ARCH_QP)
+
+#include <sys/time.h>
+
+uint64_t read_timebase() {
+  timebasestruct_t tb;
+  read_real_time(&tb, TIMEBASE_SZ);
+  return (uint64_t)tb.tb_high << 32 | tb.tb_low;
+}
+
+static inline uint64_t arch_timestamp_begin(void) { return read_timebase(); }
+static inline uint64_t arch_timestamp_end(void) { return read_timebase(); }
+
+static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs) {
+  return NULL;
+}
+static void arch_pmu_free(struct pmu *pmus) {}
+static void arch_pmu_begin(struct pmu *pmus, uint64_t *data) {}
+static void arch_pmu_end(struct pmu *pmus, uint64_t *data) {}
+
 #else
 
 #error "Unkown/Unsupported architecture"
