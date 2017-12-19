@@ -132,7 +132,7 @@ static hwloc_cpuset_t current_cpuset_getaffinity() {
     perror("sched_getaffinity() failed");
   }
 
-  for (int cpu = 0; cpu < CPU_COUNT(&cpuset); ++cpu) {
+  for (int cpu = 0; cpu < CPU_SETSIZE; ++cpu) {
     if (CPU_ISSET(cpu, &cpuset)) {
       hwloc_bitmap_set(ret, (unsigned)cpu);
     }
