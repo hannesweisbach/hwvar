@@ -7,7 +7,8 @@ static inline uint64_t arch_timestamp_end(void);
 
 struct pmu;
 
-static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs);
+static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs,
+                                 const unsigned cpu);
 static void arch_pmu_free(struct pmu *pmus);
 static void arch_pmu_begin(struct pmu *pmus, uint64_t *data);
 static void arch_pmu_end(struct pmu *pmus, uint64_t *data);
@@ -79,7 +80,8 @@ static int str2type(const char *name, uint64_t *out) {
   return -1;
 }
 
-static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs) {
+static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs,
+                                 const unsigned cpu) {
   uint64_t value;
 
   __asm__ volatile("mrs %0, PMCR_EL0" : "=r"(value));
@@ -165,7 +167,8 @@ static inline uint64_t timestamp() {
 static inline uint64_t arch_timestamp_begin(void) { return timestamp(); }
 static inline uint64_t arch_timestamp_end(void) { return timestamp(); }
 
-static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs) {
+static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs,
+                                 const unsigned cpu) {
   return NULL;
 }
 static void arch_pmu_free(struct pmu *pmus) {}
@@ -195,19 +198,149 @@ static inline uint64_t arch_timestamp_end(void) {
   return (uint64_t)high << 32ULL | low;
 }
 
-#ifdef JEVENTS_FOUND 
+#ifdef JEVENTS_FOUND
+#include <fcntl.h>
+#include <stdio.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+
 #include <jevents.h>
 #include <rdpmc.h>
+#include <mckernel.h>
+#include <sys/ioctl.h>
+#include <linux/perf_event.h>
+
+static uint64_t rdpmc(const uint32_t counter) {
+  uint32_t low, high;
+  __asm__ volatile("rdpmc" : "=a"(low), "=d"(high) : "c"(counter));
+  return (uint64_t)high << 32 | low;
+}
+
+static uint64_t rdmsr(const uint32_t idx, const int fd) {
+  if (mck_is_mckernel()) {
+    return syscall(850, idx);
+  } else {
+    uint64_t v;
+    const ssize_t ret = pread(fd, &v, sizeof(v), idx);
+    if (ret != sizeof(v)) {
+      printf("Reading MSR failed\n");
+    }
+    return v;
+  }
+}
+
+static uint64_t wrmsr(const uint32_t idx, const uint64_t val, const int fd) {
+  if (mck_is_mckernel()) {
+    return syscall(851, idx, val);
+  } else {
+    const ssize_t ret = pwrite(fd, &val, sizeof(val), idx);
+    if (ret != sizeof(val)) {
+      printf("Writing MSR %x failed\n", idx);
+    }
+    return ret;
+  }
+}
+
+enum msrs {
+  IA32_PMC_BASE = 0x0c1,
+  IA32_PERFEVTSEL_BASE = 0x186,
+  IA32_FIXED_CTR_CTRL = 0x38d,
+  IA32_PERF_GLOBAL_STATUS = 0x38e,
+  IA32_PERF_GLOBAL_CTRL = 0x38f,
+  IA32_PERF_GLOBAL_OVF_CTRL = 0x390,
+  IA32_PERF_CAPABILITIES = 0x345,
+  IA32_DEBUGCTL = 0x1d9,
+};
+
+static inline void cpuid(const int code, uint32_t *a, uint32_t *b, uint32_t *c,
+                         uint32_t *d) {
+  asm volatile("cpuid" : "=a"(*a), "=b"(*b), "=c"(*c), "=d"(*d) : "a"(code));
+}
+
+#define MASK(v, high, low) ((v >> low) & ((1 << (high - low + 1)) - 1))
 
 struct pmu {
   struct rdpmc_ctx *ctx;
+  int *perf_fds;
   unsigned active;
+  int mckernel;
+  char *msr;
+  int msr_fd;
+  uint64_t global_ctrl;
 };
 
-static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs) {
+static void pmu_info(struct pmu *pmus) {
+  uint32_t eax, ebx, ecx, edx;
+
+  cpuid(0x1, &eax, &ebx, &ecx, &edx);
+
+  printf("EAX: %08x\n", eax);
+  printf("EBX: %08x\n", ebx);
+  printf("ECX: %08x\n", ecx);
+  printf("EDX: %08x\n", edx);
+
+  if (ecx & (1 << 15)) {
+    const uint64_t caps = rdmsr(IA32_PERF_CAPABILITIES, pmus->msr_fd);
+    const int vmm_freeze = MASK(caps, 12, 12);
+    printf("Caps: %08x\n", caps);
+    printf("VMM Freeze: %u\n", vmm_freeze);
+    if (vmm_freeze) {
+      const uint64_t debugctl = rdmsr(IA32_DEBUGCTL, pmus->msr_fd);
+      wrmsr(IA32_DEBUGCTL, debugctl & ~(1 << 14), pmus->msr_fd);
+    }
+  }
+
+  cpuid(0xa, &eax, &ebx, &ecx, &edx);
+
+  const unsigned version = MASK(eax, 7, 0);
+  const unsigned counters = MASK(eax, 15, 8);
+  const unsigned width = MASK(eax, 23, 16);
+
+  const unsigned ffpc = MASK(edx, 4, 0);
+  const unsigned ff_width = MASK(edx, 12, 5);
+
+  printf("EAX: %08x\n", eax);
+  printf("EBX: %08x\n", ebx);
+  printf("ECX: %08x\n", ecx);
+  printf("EDX: %08x\n", edx);
+  printf("PMC version %u\n", version);
+  printf("PMC counters: %u\n", counters);
+  printf("PMC width: %u\n", width);
+
+  printf("FFPCs: %u, width: %u\n", ffpc, ff_width);
+}
+
+//#define JEVENTS
+//#define PERF
+//#define RAWMSR
+#define MCK
+
+#if (defined(JEVENTS) + defined(PERF) + defined(RAWMSR)) > 1
+#error "More than one PMU method selected."
+#endif
+
+static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs,
+                                 const unsigned cpu) {
   struct pmu *pmus = (struct pmu *)malloc(sizeof(struct pmu));
   pmus->ctx = (struct rdpmc_ctx *)malloc(sizeof(struct rdpmc_ctx) * num_pmcs);
+  pmus->perf_fds = (int *)malloc(sizeof(int) * num_pmcs);
   pmus->active = 0;
+  pmus->mckernel = mck_is_mckernel();
+  asprintf(&pmus->msr, "/dev/cpu/%u/msr", cpu);
+
+#if defined(RAWMSR)
+  if (!mck_is_mckernel()) {
+    pmus->msr_fd = open(pmus->msr, O_RDWR);
+    if (pmus->msr_fd < 0) {
+      printf("Opening MSR failed: %d %s\n", errno, strerror(errno));
+      exit(EXIT_FAILURE);
+    }
+  }
+
+  pmu_info(pmus);
+#elif defined(MCK) || defined(RAWMSR)
+  pmus->global_ctrl = rdmsr(IA32_PERF_GLOBAL_CTRL, -1);
+#endif
 
   for (unsigned i = 0; i < num_pmcs; ++i) {
     struct perf_event_attr attr;
@@ -218,44 +351,160 @@ static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs) {
       continue;
     }
 
-    // attr->sample_type/read_format
-
-    err = rdpmc_open_attr(&attr, &pmus->ctx[pmus->active], NULL);
-    if (err) {
-      printf("Error opening RDPMC context for event \"%s\"\n", event);
-      continue;
+    if (pmus->mckernel) {
+#if defined(MCK)
+      err = mck_pmc_init(pmus->active, attr.config, 0x4);
+      if (err) {
+        printf("Error configuring PMU with \"%s\" %x\n", event, attr.config);
+        continue;
+      }
+#elif defined(RAWMSR)
+      const uint64_t v = (1 << 22) | (1 << 16) | attr.config;
+      wrmsr(IA32_PERFEVTSEL_BASE + i, v, pmus->msr_fd);
+#else
+      fprintf(stderr, "PMU method not implmented in McKernel.\n");
+#endif
+    } else {
+#if defined(JEVENTS)
+      err = rdpmc_open_attr(&attr, &pmus->ctx[pmus->active], NULL);
+      if (err) {
+        printf("Error opening RDPMC context for event \"%s\"\n", event);
+        continue;
+      }
+#elif defined(PERF)
+      struct perf_event_attr pe;
+      memset(&pe, 0, sizeof(pe));
+      pe.config = attr.config;
+      pe.config1 = attr.config1;
+      pe.config2 = attr.config2;
+      pe.type = attr.type;
+      pe.size = attr.size;
+      // attr.disabled = 1;
+      pe.exclude_kernel = 1;
+      pe.exclude_hv = 1;
+      err = perf_event_open(&attr, 0, -1, -1, 0);
+      if (err < 0) {
+        printf("perf_event_open failed \"%s\" %d %s\n", event, errno , strerror(errno));
+        continue;
+      }
+      pmus->perf_fds[pmus->active] = err;
+#elif defined(RAWMSR)
+      const uint64_t v = (1 << 22) | (1 << 16) | attr.config;
+      wrmsr(IA32_PERFEVTSEL_BASE + i, v, pmus->msr_fd);
+#else
+      fprintf(stderr, "PMU method not implmented in Linux.\n");
+#endif
     }
 
     ++pmus->active;
   }
 
+#if defined(RAWMSR)
+  wrmsr(IA32_PERF_GLOBAL_CTRL, 0, pmus->msr_fd);
+#elif defined(MCK)
+  /* If PMUs are deactivated activate them now.
+   * McKernel only initializes them on boot.
+   * If, for example RAWMSR turns them off, they stay off.
+   */
+  if (pmus->global_ctrl == 0) {
+    wrmsr(IA32_PERF_GLOBAL_CTRL, (1 << pmus->active) - 1, -1);
+  }
+#endif
+
   return pmus;
 }
 
 static void arch_pmu_free(struct pmu *pmus) {
-  for (unsigned i = 0; i < pmus->active; ++i) {
-    rdpmc_close(&pmus->ctx[i]);
+#if defined(MCK) || defined(RAWMSR)
+  wrmsr(IA32_PERF_GLOBAL_CTRL, pmus->global_ctrl, pmus->msr_fd);
+#endif
+
+  if (!pmus->mckernel) {
+    for (unsigned i = 0; i < pmus->active; ++i) {
+#if defined(JEVENTS)
+      rdpmc_close(&pmus->ctx[i]);
+#elif defined(PERF)
+      close(pmus->perf_fds[i]);
+#elif defined(RAWMSR)
+      wrmsr(IA32_PERFEVTSEL_BASE + i, 0, pmus->msr_fd);
+#endif
+    }
+
+#if defined(RAWMSR)
+    close(pmus->msr_fd);
+#endif
   }
 
   free(pmus->ctx);
+  free(pmus->perf_fds);
+  free(pmus->msr);
   free(pmus);
 }
 
 static void arch_pmu_begin(struct pmu *pmus, uint64_t *data) {
-  for (unsigned i = 0; i < pmus->active; ++i) {
-    data[i] = rdpmc_read(&pmus->ctx[i]);
+  if (pmus->mckernel) {
+    for (unsigned i = 0; i < pmus->active; ++i) {
+#if defined(MCK)
+      mck_pmc_reset(i);
+#elif defined(RAWMSR)
+      wrmsr(IA32_PMC_BASE + i, 0, -1);
+#endif
+    }
+  } else {
+    for (unsigned i = 0; i < pmus->active; ++i) {
+#if defined(JEVENTS)
+      data[i] = rdpmc_read(&pmus->ctx[i]);
+#elif defined(PERF)
+      if (ioctl(pmus->perf_fds[i], PERF_EVENT_IOC_RESET, 0)) {
+        printf("Error in ioctl\n");
+      }
+#elif defined(RAWMSR)
+      wrmsr(IA32_PMC_BASE + i, 0, pmus->msr_fd);
+#endif
+    }
+
+#if defined(RAWMSR)
+    const uint64_t mask = (1 << pmus->active) - 1;
+    wrmsr(IA32_PERF_GLOBAL_OVF_CTRL, 0, pmus->msr_fd);
+    wrmsr(IA32_PERF_GLOBAL_CTRL, mask, pmus->msr_fd);
+#endif
+
   }
 }
 
 static void arch_pmu_end(struct pmu *pmus, uint64_t *data) {
+#if defined(RAWMSR)
+  wrmsr(IA32_PERF_GLOBAL_CTRL, 0, pmus->msr_fd);
+  const uint64_t ovf = rdmsr(IA32_PERF_GLOBAL_STATUS, pmus->msr_fd);
+  if (ovf) {
+    printf("OVF: %08x\n", ovf);
+    wrmsr(IA32_PERF_GLOBAL_OVF_CTRL, 0, pmus->msr_fd);
+  }
+#endif
+
   for (unsigned i = 0; i < pmus->active; ++i) {
-    data[i] = rdpmc_read(&pmus->ctx[i]) - data[i];
+    if (pmus->mckernel) {
+#if defined(MCK)
+      data[i] = rdpmc(i);
+#elif defined(RAWMSR)
+      data[i] = rdmsr(IA32_PMC_BASE + i, pmus->msr_fd);
+#endif
+    } else {
+#if defined(JEVENTS)
+      data[i] = rdpmc_read(&pmus->ctx[i]) - data[i];
+#elif defined(PERF)
+      read(pmus->perf_fds[i], &data[i], sizeof(long long));
+#elif defined(RAWMSR)
+      data[i] = rdmsr(IA32_PMC_BASE + i, pmus->msr_fd);
+#endif
+    }
   }
 }
 
 #else /* JEVENTS_FOUND */
 
-static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs) {
+static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs,
+                                 const unsigned cpu) {
   if (num_pmcs) {
     fprintf(stderr, "PMC support not compiled in.\n");
     exit(EXIT_FAILURE);
@@ -281,7 +530,8 @@ uint64_t read_timebase() {
 static inline uint64_t arch_timestamp_begin(void) { return read_timebase(); }
 static inline uint64_t arch_timestamp_end(void) { return read_timebase(); }
 
-static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs) {
+static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs,
+                                 const unsigned cpu) {
   return NULL;
 }
 static void arch_pmu_free(struct pmu *pmus) {}
@@ -309,7 +559,8 @@ uint64_t read_timebase() {
 static inline uint64_t arch_timestamp_begin(void) { return read_timebase(); }
 static inline uint64_t arch_timestamp_end(void) { return read_timebase(); }
 
-static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs) {
+static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs,
+                                 const unsigned cpu) {
   return NULL;
 }
 static void arch_pmu_free(struct pmu *pmus) {}

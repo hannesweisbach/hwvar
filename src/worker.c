@@ -250,7 +250,7 @@ void *worker(void *arg_) {
     void *benchmark_arg =
         (work->ops->init_arg) ? work->ops->init_arg(work->arg) : work->arg;
 
-    struct pmu *pmus = arch_pmu_init(work->pmcs, work->num_pmcs);
+    struct pmu *pmus = arch_pmu_init(work->pmcs, work->num_pmcs, arg->cpu);
 
     {
       const int err = pthread_barrier_wait(work->barrier);
