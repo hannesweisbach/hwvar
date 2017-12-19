@@ -151,12 +151,7 @@ static unsigned current_cpu_getaffinity() {
 }
 #endif
 
-void *worker(void *arg_) {
-  struct arg *arg = (struct arg *)arg_;
-  arg->run = 1;
-
-  pthread_mutex_lock(&arg->lock);
-  int dirigent = arg->dirigent;
+static void bind_thread(struct arg *arg) {
   if (arg->do_binding) {
     if (hwloc_topology_is_thissystem(arg->topology)) {
       if (hwloc_set_cpubind(arg->topology, arg->cpuset, HWLOC_CPUBIND_THREAD)) {
@@ -208,17 +203,43 @@ void *worker(void *arg_) {
               "N/A", -1,
 #endif
               hwloc_cpuset_str, hwloc_cpu);
-      } else {
-        fprintf(stderr, "Thread bound to %s/%02d\n", arg->cpuset_string,
-                arg->cpu);
-      }
-      hwloc_bitmap_free(hwloc_cpuset);
-      hwloc_bitmap_free(sched_cpuset);
+    } else {
+      fprintf(stderr, "Thread bound to %s/%02d\n", arg->cpuset_string,
+              arg->cpu);
+    }
+    hwloc_bitmap_free(hwloc_cpuset);
+    hwloc_bitmap_free(sched_cpuset);
   } else {
     /* If there's no binding at least record the current CPU number */
 #ifdef HAVE_SCHED_H
     arg->cpu = current_cpu_getaffinity();
 #endif
+  }
+}
+
+void *worker(void *arg_) {
+  struct arg *arg = (struct arg *)arg_;
+  arg->run = 1;
+
+  pthread_mutex_lock(&arg->lock);
+  int dirigent = arg->dirigent;
+
+  if (dirigent && !arg->init) {
+#if defined(PERF)
+    const char *method = "perf";
+#elif defined(JEVENTS)
+    const char *method = "jevents";
+#elif defined(RAWMSR)
+    const char *method = "rawmsr";
+#else
+    const char *method = "none";
+#endif
+    fprintf(stderr, "PMU method: %s\n", method);
+  }
+
+  if (!arg->init) {
+    bind_thread(arg);
+    arg->init = 1;
   }
 
   pthread_mutex_unlock(&arg->lock);

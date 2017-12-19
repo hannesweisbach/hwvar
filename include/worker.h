@@ -29,8 +29,9 @@ struct arg {
   unsigned thread;
   unsigned cpu;
   enum state s;
-  short run;
-  short dirigent;
+  char run;       /* set to 0 if the thread should exit its runloop */
+  char init;      /* thread binding has been done already; for dirigent */
+  short dirigent; /* non-zero for dirigent; zero for worker thread */
   int do_binding;
 };
 
