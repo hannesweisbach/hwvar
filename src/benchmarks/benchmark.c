@@ -100,11 +100,10 @@ unsigned tune_size(const char *const name,
   const double p = bytes * 100.0 / config->size;
 
   if (config->verbose) {
-    fprintf(stderr,
-            "[Cache] --%s-size=%u requires %u bytes of %" PRIu64
-            "k (%5.1f%%)\n",
-            name, n, (unsigned)bytes, config->size / 1024, p);
+    fprintf(stderr, "[Size] %s requires %u bytes of %" PRIu64 "k (%5.1f%%)\n",
+            name, (unsigned)bytes, config->size / 1024, p);
   }
+
   return n;
 }
 
