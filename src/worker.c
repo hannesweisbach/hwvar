@@ -4,9 +4,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <config.h>
+
 #ifdef HAVE_SCHED_H
 #include <sched.h>
 #endif
+
+#include <hwloc.h>
+#include <hwloc/glibc-sched.h>
 
 #include <worker.h>
 #include <arch.h>
@@ -93,28 +98,120 @@ static uint64_t get_time() {
 }
 #endif
 
-void *worker(void *arg_) {
-  // get & check cpu no
-  // potentially set_affinity / report back cpu no?
+hwloc_cpuset_t current_cpuset_hwloc(hwloc_topology_t topology) {
+  hwloc_cpuset_t ret = hwloc_bitmap_alloc();
 
-  int err;
+  if (hwloc_get_cpubind(topology, ret, HWLOC_CPUBIND_THREAD)) {
+    perror("hwloc_get_cpubind() failed");
+  }
+
+  return ret;
+}
+
+int current_cpu_hwloc(hwloc_topology_t topology) {
+  hwloc_cpuset_t cpuset = hwloc_bitmap_alloc();
+  if (hwloc_get_last_cpu_location(topology, cpuset, HWLOC_CPUBIND_THREAD)) {
+    perror("hwloc_get_last_cpu_location() failed");
+  }
+  const int cpu = hwloc_bitmap_first(cpuset);
+  hwloc_bitmap_free(cpuset);
+
+  return cpu;
+}
+
+#ifdef HAVE_SCHED_H
+hwloc_cpuset_t current_cpuset_getaffinity(hwloc_topology_t topology) {
+  hwloc_cpuset_t ret = hwloc_bitmap_alloc();
+  cpu_set_t cpuset;
+
+  if (sched_getaffinity(0, sizeof(cpuset), &cpuset)) {
+    perror("sched_getaffinity() failed");
+  }
+
+  hwloc_cpuset_from_glibc_sched_affinity(topology, ret, &cpuset,
+                                         sizeof(cpuset));
+
+  return ret;
+}
+
+int current_cpu_getaffinity() {
+  const int cpu = sched_getcpu();
+  if (cpu < 0) {
+    perror("sched_getcpu() failed");
+  }
+
+  return cpu;
+}
+#endif
+
+void *worker(void *arg_) {
   struct arg *arg = (struct arg *)arg_;
   arg->run = 1;
 
   pthread_mutex_lock(&arg->lock);
   int dirigent = arg->dirigent;
   if (arg->do_binding) {
-      fprintf(stderr, "Binding thread %d to CPU %s\n", arg->thread, arg->cpuset_string);
-      /*
-       * hwloc_cpuset_t current = hwloc_cpuset_alloc();
-       * int hwloc_get_last_cpu_location(arg->topology,current,
-       *                                 HWLOC_CPUBIND_THREAD);
-       */
-      err = hwloc_set_cpubind(arg->topology, arg->cpuset, HWLOC_CPUBIND_THREAD);
-      if (err) {
-          fprintf(stderr, "Error binding thread %d to CPU %d: %d\n", arg->thread,
-                  arg->cpu, err);
+    if (hwloc_topology_is_thissystem(arg->topology)) {
+      if (hwloc_set_cpubind(arg->topology, arg->cpuset, HWLOC_CPUBIND_THREAD)) {
+        perror("hwloc_set_cpubind() failed");
       }
+    } else {
+#ifdef HAVE_SCHED_H
+      cpu_set_t cpuset;
+      CPU_ZERO(&cpuset);
+      CPU_SET(arg->cpu, &cpuset);
+      if (sched_setaffinity(0, sizeof(cpuset), &cpuset)) {
+        perror("sched_setaffinity() failed");
+      }
+#endif
+    }
+
+    hwloc_cpuset_t hwloc_cpuset = current_cpuset_hwloc(arg->topology);
+    const int hwloc_cpu = current_cpu_hwloc(arg->topology);
+    char hwloc_cpuset_str[16];
+    hwloc_bitmap_snprintf(hwloc_cpuset_str, sizeof(hwloc_cpuset_str),
+                          hwloc_cpuset);
+
+#ifdef HAVE_SCHED_H
+    hwloc_cpuset_t sched_cpuset = current_cpuset_getaffinity(arg->topology);
+    const int sched_cpu = current_cpu_getaffinity();
+    char sched_cpuset_str[16];
+    hwloc_bitmap_snprintf(sched_cpuset_str, sizeof(sched_cpuset_str),
+                          sched_cpuset);
+#endif
+
+    const int equal =
+        hwloc_bitmap_isequal(arg->cpuset, hwloc_cpuset)
+        /* Unfortunately hwloc_get_last_cpu_location() does not (yet?) work
+           under McKernel. */
+        && (mck_is_mckernel() || (arg->cpu == hwloc_cpu))
+#ifdef HAVE_SCHED_H
+        && hwloc_bitmap_isequal(arg->cpuset, sched_cpuset) &&
+        (arg->cpu == sched_cpu)
+#endif
+        ;
+
+    if (!equal) {
+      fprintf(stderr,
+              "Target: %s/%02d, getaffinity/cpu(): %s/%02d, hwloc: %s/%02d\n",
+              arg->cpuset_string, arg->cpu,
+#ifdef HAVE_SCHED_H
+              sched_cpuset_str, sched_cpu,
+#else
+              "N/A", -1,
+#endif
+              hwloc_cpuset_str, hwloc_cpu);
+      } else {
+        fprintf(stderr, "Thread bound to %s/%02d\n", arg->cpuset_string,
+                arg->cpu);
+      }
+      hwloc_bitmap_free(hwloc_cpuset);
+      hwloc_bitmap_free(sched_cpuset);
+  } else {
+    /* If there's no binding at least record the current CPU number */
+#ifdef HAVE_SCHED_H
+    arg->cpu = current_cpu_getaffinity();
+#endif
   }
 
   pthread_mutex_unlock(&arg->lock);
@@ -127,9 +224,11 @@ void *worker(void *arg_) {
 
     struct pmu *pmus = arch_pmu_init(work->pmcs, work->num_pmcs);
 
-    err = pthread_barrier_wait(work->barrier);
-    if (err && err != PTHREAD_BARRIER_SERIAL_THREAD) {
-      perror("barrier");
+    {
+      const int err = pthread_barrier_wait(work->barrier);
+      if (err && err != PTHREAD_BARRIER_SERIAL_THREAD) {
+        perror("pthread_barrier_wait() failed");
+      }
     }
 
     // reps = warm-up + benchmark runs.
