@@ -98,7 +98,7 @@ static uint64_t get_time() {
 }
 #endif
 
-hwloc_cpuset_t current_cpuset_hwloc(hwloc_topology_t topology) {
+static hwloc_cpuset_t current_cpuset_hwloc(hwloc_topology_t topology) {
   hwloc_cpuset_t ret = hwloc_bitmap_alloc();
 
   if (hwloc_get_cpubind(topology, ret, HWLOC_CPUBIND_THREAD)) {
@@ -108,19 +108,23 @@ hwloc_cpuset_t current_cpuset_hwloc(hwloc_topology_t topology) {
   return ret;
 }
 
-int current_cpu_hwloc(hwloc_topology_t topology) {
+static unsigned current_cpu_hwloc(hwloc_topology_t topology) {
   hwloc_cpuset_t cpuset = hwloc_bitmap_alloc();
   if (hwloc_get_last_cpu_location(topology, cpuset, HWLOC_CPUBIND_THREAD)) {
     perror("hwloc_get_last_cpu_location() failed");
   }
   const int cpu = hwloc_bitmap_first(cpuset);
+  if (cpu < 0) {
+    perror("hwloc_bitmap_first() failed");
+  }
+
   hwloc_bitmap_free(cpuset);
 
-  return cpu;
+  return (unsigned)cpu;
 }
 
 #ifdef HAVE_SCHED_H
-hwloc_cpuset_t current_cpuset_getaffinity(hwloc_topology_t topology) {
+static hwloc_cpuset_t current_cpuset_getaffinity() {
   hwloc_cpuset_t ret = hwloc_bitmap_alloc();
   cpu_set_t cpuset;
 
@@ -137,13 +141,13 @@ hwloc_cpuset_t current_cpuset_getaffinity(hwloc_topology_t topology) {
   return ret;
 }
 
-int current_cpu_getaffinity() {
+static unsigned current_cpu_getaffinity() {
   const int cpu = sched_getcpu();
   if (cpu < 0) {
     perror("sched_getcpu() failed");
   }
 
-  return cpu;
+  return (unsigned)cpu;
 }
 #endif
 
@@ -170,14 +174,14 @@ void *worker(void *arg_) {
     }
 
     hwloc_cpuset_t hwloc_cpuset = current_cpuset_hwloc(arg->topology);
-    const int hwloc_cpu = current_cpu_hwloc(arg->topology);
+    const unsigned hwloc_cpu = current_cpu_hwloc(arg->topology);
     char hwloc_cpuset_str[16];
     hwloc_bitmap_snprintf(hwloc_cpuset_str, sizeof(hwloc_cpuset_str),
                           hwloc_cpuset);
 
 #ifdef HAVE_SCHED_H
-    hwloc_cpuset_t sched_cpuset = current_cpuset_getaffinity(arg->topology);
-    const int sched_cpu = current_cpu_getaffinity();
+    hwloc_cpuset_t sched_cpuset = current_cpuset_getaffinity();
+    const unsigned sched_cpu = current_cpu_getaffinity();
     char sched_cpuset_str[16];
     hwloc_bitmap_snprintf(sched_cpuset_str, sizeof(sched_cpuset_str),
                           sched_cpuset);
