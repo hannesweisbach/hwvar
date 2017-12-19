@@ -7,6 +7,11 @@ static inline uint64_t arch_timestamp_end(void);
 
 struct pmu;
 
+static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs);
+static void arch_pmu_free(struct pmu *pmus);
+static void arch_pmu_begin(struct pmu *pmus, uint64_t *data);
+static void arch_pmu_end(struct pmu *pmus, uint64_t *data);
+
 #ifdef __aarch64__
 
 static inline uint64_t timestamp() {
