@@ -22,12 +22,6 @@ static int mck_pmc_start(unsigned long counter) { return syscall(602, counter); 
 static int mck_pmc_stop(unsigned long counter) { return syscall(603, counter); }
 static int mck_pmc_reset(int counter) { return syscall(604, counter); }
 
-static uint64_t rdpmc(const uint32_t counter) {
-  uint32_t low, high;
-  __asm__ volatile("rdpmc" : "=a"(low), "=d"(high) : "c"(counter));
-  return (uint64_t)high << 32 | low;
-}
-
 #else
 
 static int mck_is_mckernel() { return 0; }
