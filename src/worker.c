@@ -16,6 +16,7 @@
 #include <worker.h>
 #include <arch.h>
 #include <platform.h>
+#include <mckernel.h>
 
 step_t *init_step(const int threads) {
   step_t *step = (step_t *)malloc(sizeof(step_t));

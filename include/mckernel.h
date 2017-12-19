@@ -1,5 +1,7 @@
 #pragma once
 
+#ifndef __APPLE__
+
 #include <inttypes.h>
 #include <unistd.h>
 
@@ -25,4 +27,10 @@ static uint64_t rdpmc(const uint32_t counter) {
   __asm__ volatile("rdpmc" : "=a"(low), "=d"(high) : "c"(counter));
   return (uint64_t)high << 32 | low;
 }
+
+#else
+
+static int mck_is_mckernel() { return 0; }
+
+#endif
 
