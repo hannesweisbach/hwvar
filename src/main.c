@@ -327,13 +327,13 @@ static benchmark_result_t run_one_by_one(threads_t *workers, benchmark_t *ops,
       const uint64_t mins = (secs - sec) / 60;
       const unsigned min = mins % 60UL;
       const unsigned hours = (mins - min) / 60;
-      fprintf(stdout,
+      fprintf(stderr,
               "Running %u of %i. Last took %02d:%02d:%02d (%" PRIu64 "s)\r",
               i + 1, cpus, hours, min, sec, secs);
-      fflush(stdout);
+      fflush(stderr);
     } else {
-      fprintf(stdout, "Running %u of %i\r", i + 1, cpus);
-      fflush(stdout);
+      fprintf(stderr, "Running %u of %i\r", i + 1, cpus);
+      fflush(stderr);
     }
 
     const uint64_t begin = get_time();
@@ -671,7 +671,7 @@ int main(int argc, char *argv[]) {
     } else if (!do_binding) {
       fprintf(stderr, "; explicit thread binding disabled.");
     }
-    fprintf(stdout, "\n");
+    fprintf(stderr, "\n");
   }
 
   unsigned num_benchmarks = opt_benchmarks == NULL
@@ -802,7 +802,7 @@ int main(int argc, char *argv[]) {
   for (unsigned i = 0; i < num_benchmarks; ++i) {
     benchmark_t *benchmark = benchmarks[i];
 
-    fprintf(stdout, "Running %s\n", benchmark->name);
+    fprintf(stdout, "# %s\n", benchmark->name);
 
     benchmark_result_t result;
     switch (policy) {
