@@ -11,7 +11,6 @@
 #endif
 
 #include <hwloc.h>
-#include <hwloc/glibc-sched.h>
 
 #include <worker.h>
 #include <arch.h>
@@ -129,8 +128,11 @@ hwloc_cpuset_t current_cpuset_getaffinity(hwloc_topology_t topology) {
     perror("sched_getaffinity() failed");
   }
 
-  hwloc_cpuset_from_glibc_sched_affinity(topology, ret, &cpuset,
-                                         sizeof(cpuset));
+  for (int cpu = 0; cpu < CPU_COUNT(&cpuset); ++cpu) {
+    if (CPU_ISSET(cpu, &cpuset)) {
+      hwloc_bitmap_set(ret, (unsigned)cpu);
+    }
+  }
 
   return ret;
 }
