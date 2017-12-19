@@ -263,7 +263,7 @@ static void arch_pmu_end(struct pmu *pmus, uint64_t *data) {}
 
 #endif /* JEVENTS_FOUND */
 
-#elif defined(_ARCH_QP)
+#elif defined(_ARCH_PPC) || defined(__ppc__) || defined(_ARCH_QP)
 
 #include <sys/time.h>
 
