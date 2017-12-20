@@ -310,17 +310,22 @@ static void pmu_info(struct pmu *pmus) {
   printf("FFPCs: %u, width: %u\n", ffpc, ff_width);
 }
 
-#ifdef linux
-#define JEVENTS
-//#define PERF
-//#define RAWMSR
-#else
-#define MCK
-//#define RAWMSR
+#define LINUX_JEVENTS
+//#define LINUX_PERF
+//#define LINUX_RAWMSR
+#define MCK_MCK
+//#define MCK_RAWMSR
+
+#if defined(LINUX_RAWMSR) || defined(MCK_RAWMSR)
+#define RAWMSR
 #endif
 
-#if (defined(JEVENTS) + defined(PERF) + defined(RAWMSR) + defined(MCK)) > 1
-#error "More than one PMU method selected."
+#if (defined(LINUX_JEVENTS) + defined(LINUX_PERF) + defined(LINUX_RAWMSR)) > 1
+#error "More than one PMU method for Linux selected."
+#endif
+
+#if (defined(MCK_MCK) + defined(MCK_RAWMSR)) > 1
+#error "More than one PMU method for McKernel selected."
 #endif
 
 static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs,
@@ -342,7 +347,9 @@ static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs,
   }
 
   pmu_info(pmus);
-#elif defined(MCK) || defined(RAWMSR)
+#endif
+
+#if defined(MCK_MCK) || defined(RAWMSR)
   pmus->global_ctrl = rdmsr(IA32_PERF_GLOBAL_CTRL, -1);
 #endif
 
@@ -356,26 +363,26 @@ static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs,
     }
 
     if (pmus->mckernel) {
-#if defined(MCK)
+#if defined(MCK_MCK)
       err = mck_pmc_init(pmus->active, attr.config, 0x4);
       if (err) {
         printf("Error configuring PMU with \"%s\" %x\n", event, attr.config);
         continue;
       }
-#elif defined(RAWMSR)
+#elif defined(MCK_RAWMSR)
       const uint64_t v = (1 << 22) | (1 << 16) | attr.config;
       wrmsr(IA32_PERFEVTSEL_BASE + i, v, pmus->msr_fd);
 #else
       fprintf(stderr, "PMU method not implmented in McKernel.\n");
 #endif
     } else {
-#if defined(JEVENTS)
+#if defined(LINUX_JEVENTS)
       err = rdpmc_open_attr(&attr, &pmus->ctx[pmus->active], NULL);
       if (err) {
         printf("Error opening RDPMC context for event \"%s\"\n", event);
         continue;
       }
-#elif defined(PERF)
+#elif defined(LINUX_PERF)
       struct perf_event_attr pe;
       memset(&pe, 0, sizeof(pe));
       pe.config = attr.config;
@@ -392,51 +399,56 @@ static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs,
         continue;
       }
       pmus->perf_fds[pmus->active] = err;
-#elif defined(RAWMSR)
+#elif defined(LINUX_RAWMSR)
       const uint64_t v = (1 << 22) | (1 << 16) | attr.config;
       wrmsr(IA32_PERFEVTSEL_BASE + i, v, pmus->msr_fd);
 #else
-      fprintf(stderr, "PMU method not implmented in Linux.\n");
+      fprintf(stderr, "PMU method not implemented in Linux.\n");
 #endif
     }
 
     ++pmus->active;
   }
 
-#if defined(RAWMSR)
-  wrmsr(IA32_PERF_GLOBAL_CTRL, 0, pmus->msr_fd);
-#elif defined(MCK)
-  /* If PMUs are deactivated activate them now.
-   * McKernel only initializes them on boot.
-   * If, for example RAWMSR turns them off, they stay off.
-   */
-  if (pmus->global_ctrl == 0) {
-    wrmsr(IA32_PERF_GLOBAL_CTRL, (1 << pmus->active) - 1, -1);
-  }
+  if (pmus->mckernel) {
+#if defined(MCK_RAWMSR)
+    wrmsr(IA32_PERF_GLOBAL_CTRL, 0, pmus->msr_fd);
+#elif defined(MCK_MCK)
+    /* If PMUs are deactivated activate them now.
+     * McKernel only initializes them on boot.
+     * If, for example RAWMSR turns them off, they stay off.
+     */
+    if (pmus->global_ctrl == 0) {
+      wrmsr(IA32_PERF_GLOBAL_CTRL, (1 << pmus->active) - 1, -1);
+    }
 #endif
+  } else {
+#if defined(LINUX_RAWMSR)
+    wrmsr(IA32_PERF_GLOBAL_CTRL, 0, pmus->msr_fd);
+#endif
+  }
 
   return pmus;
 }
 
 static void arch_pmu_free(struct pmu *pmus) {
-#if defined(MCK) || defined(RAWMSR)
-  wrmsr(IA32_PERF_GLOBAL_CTRL, pmus->global_ctrl, pmus->msr_fd);
-#endif
-
   if (!pmus->mckernel) {
     for (unsigned i = 0; i < pmus->active; ++i) {
-#if defined(JEVENTS)
+#if defined(LINUX_JEVENTS)
       rdpmc_close(&pmus->ctx[i]);
-#elif defined(PERF)
+#elif defined(LINUX_PERF)
       close(pmus->perf_fds[i]);
-#elif defined(RAWMSR)
+#elif defined(LINUX_RAWMSR)
       wrmsr(IA32_PERFEVTSEL_BASE + i, 0, pmus->msr_fd);
 #endif
     }
 
-#if defined(RAWMSR)
+#if defined(LINUX_RAWMSR)
+    wrmsr(IA32_PERF_GLOBAL_CTRL, pmus->global_ctrl, pmus->msr_fd);
     close(pmus->msr_fd);
 #endif
+  } else {
+    wrmsr(IA32_PERF_GLOBAL_CTRL, pmus->global_ctrl, pmus->msr_fd);
   }
 
   free(pmus->ctx);
@@ -448,57 +460,73 @@ static void arch_pmu_free(struct pmu *pmus) {
 static void arch_pmu_begin(struct pmu *pmus, uint64_t *data) {
   if (pmus->mckernel) {
     for (unsigned i = 0; i < pmus->active; ++i) {
-#if defined(MCK)
+#if defined(MCK_MCK)
       mck_pmc_reset(i);
-#elif defined(RAWMSR)
+#elif defined(MCK_RAWMSR)
       wrmsr(IA32_PMC_BASE + i, 0, -1);
 #endif
     }
-  } else {
-    for (unsigned i = 0; i < pmus->active; ++i) {
-#if defined(JEVENTS)
-      data[i] = rdpmc_read(&pmus->ctx[i]);
-#elif defined(PERF)
-      if (ioctl(pmus->perf_fds[i], PERF_EVENT_IOC_RESET, 0)) {
-        printf("Error in ioctl\n");
-      }
-#elif defined(RAWMSR)
-      wrmsr(IA32_PMC_BASE + i, 0, pmus->msr_fd);
-#endif
-    }
 
-#if defined(RAWMSR)
+#if defined(MCK_RAWMSR)
     const uint64_t mask = (1 << pmus->active) - 1;
     wrmsr(IA32_PERF_GLOBAL_OVF_CTRL, 0, pmus->msr_fd);
     wrmsr(IA32_PERF_GLOBAL_CTRL, mask, pmus->msr_fd);
 #endif
+  } else {
+    for (unsigned i = 0; i < pmus->active; ++i) {
+#if defined(LINUX_JEVENTS)
+      data[i] = rdpmc_read(&pmus->ctx[i]);
+#elif defined(LINUX_PERF)
+      if (ioctl(pmus->perf_fds[i], PERF_EVENT_IOC_RESET, 0)) {
+        printf("Error in ioctl\n");
+      }
+#elif defined(LINUX_RAWMSR)
+      wrmsr(IA32_PMC_BASE + i, 0, pmus->msr_fd);
+#endif
+    }
 
+#if defined(LINUX_RAWMSR)
+    const uint64_t mask = (1 << pmus->active) - 1;
+    wrmsr(IA32_PERF_GLOBAL_OVF_CTRL, 0, pmus->msr_fd);
+    wrmsr(IA32_PERF_GLOBAL_CTRL, mask, pmus->msr_fd);
+#endif
   }
 }
 
 static void arch_pmu_end(struct pmu *pmus, uint64_t *data) {
-#if defined(RAWMSR)
-  wrmsr(IA32_PERF_GLOBAL_CTRL, 0, pmus->msr_fd);
-  const uint64_t ovf = rdmsr(IA32_PERF_GLOBAL_STATUS, pmus->msr_fd);
-  if (ovf) {
-    printf("OVF: %08x\n", ovf);
-    wrmsr(IA32_PERF_GLOBAL_OVF_CTRL, 0, pmus->msr_fd);
-  }
+  if (pmus->mckernel) {
+#if defined(MCK_RAWMSR)
+    wrmsr(IA32_PERF_GLOBAL_CTRL, 0, pmus->msr_fd);
+    const uint64_t ovf = rdmsr(IA32_PERF_GLOBAL_STATUS, pmus->msr_fd);
+    if (ovf) {
+      printf("OVF: %08x\n", ovf);
+      wrmsr(IA32_PERF_GLOBAL_OVF_CTRL, 0, pmus->msr_fd);
+    }
 #endif
+  } else {
+#if defined(LINUX_RAWMSR)
+    wrmsr(IA32_PERF_GLOBAL_CTRL, 0, pmus->msr_fd);
+    const uint64_t ovf = rdmsr(IA32_PERF_GLOBAL_STATUS, pmus->msr_fd);
+    if (ovf) {
+      printf("OVF: %08x\n", ovf);
+      wrmsr(IA32_PERF_GLOBAL_OVF_CTRL, 0, pmus->msr_fd);
+    }
+#endif
+  }
 
   for (unsigned i = 0; i < pmus->active; ++i) {
     if (pmus->mckernel) {
-#if defined(MCK)
+#if defined(MCK_MCK)
       data[i] = rdpmc(i);
-#elif defined(RAWMSR)
+#elif defined(MCK_RAWMSR)
       data[i] = rdmsr(IA32_PMC_BASE + i, pmus->msr_fd);
 #endif
     } else {
-#if defined(JEVENTS)
+#if defined(LINUX_JEVENTS)
       data[i] = rdpmc_read(&pmus->ctx[i]) - data[i];
-#elif defined(PERF)
+#elif defined(LINUX_PERF)
       read(pmus->perf_fds[i], &data[i], sizeof(long long));
-#elif defined(RAWMSR)
+#elif defined(LINUX_RAWMSR)
       data[i] = rdmsr(IA32_PMC_BASE + i, pmus->msr_fd);
 #endif
     }
