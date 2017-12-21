@@ -570,7 +570,7 @@ static void arch_pmu_free(struct pmu *pmus) {}
 static void arch_pmu_begin(struct pmu *pmus, uint64_t *data) {}
 static void arch_pmu_end(struct pmu *pmus, uint64_t *data) {}
 
-#elif defined(__ppc__) || defined(_ARCH_PPC)
+#elif defined(__ppc__) || defined(_ARCH_PPC) || defined(__PPC__)
 
 uint64_t read_timebase() {
 #if defined(__powerpc64__) || defined(_ARCH_PPC64)
