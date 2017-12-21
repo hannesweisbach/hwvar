@@ -92,12 +92,7 @@ static void *call_work(void *arg_) {
 }
 
 benchmark_t capacity_ops = {
-    .name = "capacity",
-    .init = capacity_init,
-    .init_arg = init_argument,
-    .reset_arg = NULL,
-    .free_arg = destroy_argument,
-    .call = call_work,
-    .state = NULL,
+    "capacity",       capacity_init, init_argument, NULL,
+    destroy_argument, call_work,     NULL,
 };
 
