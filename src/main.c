@@ -522,13 +522,6 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  hwloc_const_cpuset_t orig = hwloc_topology_get_complete_cpuset(topology);
-  if (hwloc_bitmap_weight(orig) == 48) {
-    hwloc_cpuset_t restricted = hwloc_bitmap_dup(orig);
-    hwloc_bitmap_clr(restricted, 0);
-    hwloc_topology_restrict(topology, restricted, 0);
-  }
-
 #ifdef JEVENTS_FOUND
   // Initialize the racy libjevents.
   read_events(NULL);
