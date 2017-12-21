@@ -52,7 +52,7 @@ void queue_work(struct arg *arg, work_t *work) {
 
 work_t * wait_until_done(struct arg *arg) {
   pthread_mutex_lock(&arg->lock);
-  while (arg->s != DONE) {
+  while (*(volatile enum state *)&arg->s != DONE) {
     pthread_cond_wait(&arg->cv, &arg->lock);
   }
   work_t *work = arg->work;
@@ -66,7 +66,7 @@ work_t * wait_until_done(struct arg *arg) {
 static work_t *wait_for_work(struct arg *arg) {
   pthread_mutex_lock(&arg->lock);
   assert(arg->s != WORKING);
-  while (arg->s != QUEUED) {
+  while (*(volatile enum state *)&arg->s != QUEUED) {
     pthread_cond_wait(&arg->cv, &arg->lock);
   }
   work_t *work = arg->work;
