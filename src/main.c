@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
+#include <sys/time.h>
+#include <time.h>
 
 #include <hwloc.h>
 
@@ -21,14 +23,23 @@
 #endif
 
 static uint64_t get_time() {
-  struct timespec ts;
 #ifdef HAVE_CLOCK_GETTIME
-  clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
-#else
-  ts.tv_sec = ts.tv_nsec = 0;
-#endif
+  struct timespec ts;
+  if (clock_gettime(CLOCK_MONOTONIC_RAW, &ts)) {
+    perror("clock_gettime() failed");
+    exit(EXIT_FAILURE);
+  }
 
   return (uint64_t)ts.tv_sec * 1000 * 1000 * 1000 + (uint64_t)ts.tv_nsec;
+#else
+  struct timeval tv;
+  if (gettimeofday(&tv, NULL)) {
+    perror("gettimeofday() failed");
+    exit(EXIT_FAILURE);
+  }
+
+  return (uint64_t)tv.tv_sec * 1000 * 1000 * 1000 + (uint64_t)tv.tv_usec * 1000;
+#endif
 }
 
 static threads_t *spawn_workers(hwloc_topology_t topology,

@@ -6,7 +6,7 @@ target_link_libraries(hwperfvar benchmark ${HWLOC_LIBRARIES} ${CMAKE_THREAD_LIBS
 if(Sanitizers_FOUND)
   add_sanitizers(hwperfvar)
 endif()
-if(HAVE_LIBRT)
+if(LIBRT_LIBRARIES)
   target_link_libraries(hwperfvar ${LIBRT_LIBRARIES})
 endif()
 if(JEVENTS_FOUND)

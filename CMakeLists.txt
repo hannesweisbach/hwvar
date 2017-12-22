@@ -59,6 +59,12 @@ else()
   check_function_exists(clock_gettime HAVE_CLOCK_GETTIME)
 endif()
 
+# They're found for BlueGene, but are not implemented.
+if(${CMAKE_SYSTEM_NAME} MATCHES "BlueGene")
+  set(HAVE_CLOCK_GETTIME OFF)
+  set(HAVE_SCHED_GETCPU OFF)
+endif()
+
 find_path(JEVENTS_INCDIR
   NAMES jevents.h
   HINTS ${JEVENTS_DIR}
