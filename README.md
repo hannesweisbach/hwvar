@@ -209,3 +209,36 @@ export CFLAGS="-ipo -O3 -no-prec-div -fp-model fast=2 -xHost -ip"
 export CXXFLAGS="-ipo -O3 -no-prec-div -fp-model fast=2 -xHost -ip"
 CC=icc CXX=icpc cmake <path to source> -DCMAKE_AR:STRING=xiar -DCMAKE_BUILD_TYPE=Release
 ```
+
+### Examples Compiling with xlc
+
+```
+CFLAGS=-O5
+CXXFLAGS=-O5
+CC=xlc_r CXX=xlC_r cmake <path to source>
+```
+
+### Building for BlueGene/Q
+
+You probably have to compile hwloc for the BG/Q, but that works out of the box:
+
+```
+export CC=mpicc
+export CXX=mpicxx
+./configure --prefix=<install path> --disable-shared --enable-static --host=powerpc64-bgq-linux
+```
+
+`mpicc` and `mpicxx` are MPI-wrappers around gcc or xlc, depending on which
+compiler you loaded. With hwloc compiled and installed proceed to compile HWPerfVar:
+
+```
+export CFLAGS="-O5"
+export CXXFLAGS="-O5"
+export HWLOC_DIR=<path to hwloc install>
+cmake -DCMAKE_SYSTEM_NAME=BlueGeneQ-static <path to source>
+```
+
+You should probably use the same compiler for hwloc and HWPerfVar. You can
+probably also use BlueGeneQ-dynamic, but I haven't tested it. In the scripts
+subdirectory there's a `BlueGeneQ-build.sh` script showcasing how to compile
+for BG/Q.
