@@ -549,18 +549,13 @@ static void arch_pmu_end(struct pmu *pmus, uint64_t *data) {}
 
 #endif /* JEVENTS_FOUND */
 
-#elif defined(_ARCH_QP)
 
-#include <sys/time.h>
+#elif defined(__bgq__)
 
-uint64_t read_timebase() {
-  timebasestruct_t tb;
-  read_real_time(&tb, TIMEBASE_SZ);
-  return (uint64_t)tb.tb_high << 32 | tb.tb_low;
-}
+#include <hwi/include/bqc/A2_inlines.h>
 
-static inline uint64_t arch_timestamp_begin(void) { return read_timebase(); }
-static inline uint64_t arch_timestamp_end(void) { return read_timebase(); }
+static inline uint64_t arch_timestamp_begin(void) { return GetTimeBase(); }
+static inline uint64_t arch_timestamp_end(void) { return GetTimeBase(); }
 
 static struct pmu *arch_pmu_init(const char **pmcs, const unsigned num_pmcs,
                                  const unsigned cpu) {
