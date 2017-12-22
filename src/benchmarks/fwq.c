@@ -37,24 +37,45 @@ static void fwq_init(int argc, char *argv[],
 
 }
 
-static void *call_work(void *arg_) {
-  for (int round = 0; round < rounds; ++round) {
+typedef struct {
+  int64_t cnt;
+} fwq_arg_t;
 
-    static int64_t wl = 1 << 20;
-    for (int64_t count = -wl; count < 0;) {
+static void *fwq_arg_init(void *arg_) {
+  fwq_arg_t *arg = (fwq_arg_t *)malloc(sizeof(fwq_arg_t));
+  return arg;
+}
+
+static void fwq_arg_free(void *arg_) {
+  fwq_arg_t *arg = (fwq_arg_t *)arg_;
+  free(arg);
+}
+
+static void *call_work(void *arg_) {
+  const int64_t wl = 1LL << 20;
+  int64_t count = -wl;
+  for (int round = 0; round < rounds; ++round) {
+    for (count = -wl; count < 0;) {
       count++;
       __asm__ __volatile__("");
     }
   }
+
+  {
+    /* pretend to use the result */
+    fwq_arg_t *arg = (fwq_arg_t *)arg_;
+    arg->cnt = count;
+  }
+
   return NULL;
 }
 
 benchmark_t fwq_ops = {
     .name = "fwq",
     .init = fwq_init,
-    .init_arg = NULL,
+    .init_arg = fwq_arg_init,
     .reset_arg = NULL,
-    .free_arg = NULL,
+    .free_arg = fwq_arg_free,
     .call = call_work,
     .state = NULL,
 };
