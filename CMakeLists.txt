@@ -75,6 +75,25 @@ find_library(JEVENTS_LIBRARIES jevents
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(JEVENTS DEFAULT_MSG JEVENTS_LIBRARIES JEVENTS_INCDIR)
 
+if(${CMAKE_SYSTEM_NAME} MATCHES "BlueGene")
+  # They're found for BlueGene, but are not implemented.
+  set(HAVE_CLOCK_GETTIME OFF)
+  set(HAVE_SCHED_GETCPU OFF)
+
+  find_path(BGPM_INCDIR
+    NAMES bgpm.h
+    HINTS ${BGPM_DIR}
+    PATH_SUFFIXES bgpm/include)
+  find_library(BGPM_LIBRARIES bgpm
+    HINTS ${BGPM_DIR}
+    PATH_SUFFIXES bgpm/lib lib lib32 lib64)
+  find_package_handle_standard_args(BGPM DEFAULT_MSG BGPM_LIBRARIES BGPM_INCDIR)
+  if(BGPM_FOUND)
+    set(HAVE_BGPM ON)
+  endif()
+endif()
+
+
 include_directories(include ${CMAKE_CURRENT_BINARY_DIR} ${HWLOC_INCLUDE_DIRS})
 
 add_subdirectory(src)
