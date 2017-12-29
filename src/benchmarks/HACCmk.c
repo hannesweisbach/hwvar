@@ -94,11 +94,10 @@ static void HACCmk_init(int argc, char *argv[],
 
   if ((N % 4) != 0) {
     unsigned tmp = N;
-    N = N + (4 - (N % 4));
+    N = N - (N % 4);
     fprintf(stderr,
             "Vector size must be divisible by 4; adjusted from %u to %u\n", tmp,
             N);
-    exit(EXIT_FAILURE);
   }
 
   if (N > 15000) {
