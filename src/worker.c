@@ -208,7 +208,9 @@ static void bind_thread(struct arg *arg) {
               arg->cpu);
     }
     hwloc_bitmap_free(hwloc_cpuset);
+#ifdef HAVE_SCHED_H
     hwloc_bitmap_free(sched_cpuset);
+#endif
   } else {
     /* If there's no binding at least record the current CPU number */
 #ifdef HAVE_SCHED_H
