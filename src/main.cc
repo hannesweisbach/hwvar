@@ -18,8 +18,10 @@
 #include "dgemm.h"
 
 #ifdef JEVENTS_FOUND
-#include <rdpmc.h>
+extern "C" {
 #include <jevents.h>
+#include <rdpmc.h>
+}
 #endif
 
 static uint64_t get_time() {
@@ -141,7 +143,7 @@ static threads_t *spawn_workers(hwloc_topology_t topology,
   return workers;
 }
 
-static struct hwloc_cache_attr_s l1_attributes(hwloc_topology_t topology) {
+static struct hwloc_obj_attr_u::hwloc_cache_attr_s l1_attributes(hwloc_topology_t topology) {
   const int depth = hwloc_get_type_or_below_depth(topology, HWLOC_OBJ_PU);
   if (depth < 0) {
     fprintf(stderr, "Error finding PU\n");
@@ -151,7 +153,11 @@ static struct hwloc_cache_attr_s l1_attributes(hwloc_topology_t topology) {
   /* Discover cache line size */
   hwloc_obj_t cache = hwloc_get_cache_covering_cpuset(topology, obj->cpuset);
   assert(cache != NULL);
+#if HWLOC_API_VERSION >= 0x00020001
+  assert(cache->type == HWLOC_OBJ_L1CACHE);
+#else
   assert(cache->type == HWLOC_OBJ_CACHE);
+#endif
   assert(cache->attr->cache.depth == 1);
   fprintf(stderr, "[L1] size: %" PRIu64 ", line size: %u\n",
           cache->attr->cache.size, cache->attr->cache.linesize);
@@ -321,7 +327,7 @@ static benchmark_result_t run_one_by_one(threads_t *workers, benchmark_t *ops,
       result_alloc((unsigned)cpus, repetitions, num_pmcs);
   step_t *step = init_step(1);
 
-  uint64_t diff;
+  uint64_t diff = 0;
   for (int i = 0; i < cpus; ++i) {
     work_t *work = &step->work[0];
     work->ops = ops;
@@ -333,13 +339,13 @@ static benchmark_result_t run_one_by_one(threads_t *workers, benchmark_t *ops,
     work->num_pmcs = num_pmcs - 1;
 
     if (i) {
-      const uint64_t secs = diff / (1000 * 1000 * 1000UL);
+      const unsigned secs = (unsigned)(diff / (1000 * 1000 * 1000UL));
       const unsigned sec = secs % 60UL;
-      const uint64_t mins = (secs - sec) / 60;
+      const unsigned mins = (secs - sec) / 60;
       const unsigned min = mins % 60UL;
       const unsigned hours = (mins - min) / 60;
       fprintf(stderr,
-              "Running %u of %i. Last took %02d:%02d:%02d (%" PRIu64 "s)\r",
+              "Running %u of %i. Last took %02u:%02u:%02u (%us)\r",
               i + 1, cpus, hours, min, sec, secs);
       fflush(stderr);
     } else {
@@ -470,7 +476,7 @@ static void tune_benchmarks_time(benchmark_t **benchmarks,
   fprintf(stderr, "\n");
 }
 
-static int file_exists(const char *restrict name) {
+static int file_exists(const char *name) {
   struct stat tmp;
   int err = stat(name, &tmp);
   return (err == 0) || (errno != ENOENT);
@@ -538,7 +544,7 @@ int main(int argc, char *argv[]) {
   read_events(NULL);
 #endif
 
-  struct hwloc_cache_attr_s l1 = l1_attributes(topology);
+  struct hwloc_obj_attr_u::hwloc_cache_attr_s l1 = l1_attributes(topology);
 
   enum policy { PARALLEL, ONE_BY_ONE, PAIR, NR_POLICIES };
 

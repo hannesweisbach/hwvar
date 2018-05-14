@@ -2,6 +2,10 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct {
   uint64_t size;
   double fill_factor;
@@ -30,3 +34,7 @@ unsigned tune_size(const char *const name,
                    const benchmark_config_t *const config,
                    const unsigned data_size, const uint16_t datasets,
                    const uint16_t power);
+
+#ifdef __cplusplus
+}
+#endif

@@ -7,6 +7,10 @@
 #include <barrier.h>
 #include <benchmark.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct work {
   pthread_barrier_t *barrier;
   benchmark_t *ops;
@@ -59,3 +63,6 @@ void free_step(step_t *step);
 void queue_work(struct arg *arg, work_t *work);
 work_t * wait_until_done(struct arg *arg);
 
+#ifdef __cplusplus
+}
+#endif
