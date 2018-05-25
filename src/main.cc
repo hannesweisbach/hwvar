@@ -1,3 +1,7 @@
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+
 #include <ctype.h>
 #include <getopt.h>
 #include <inttypes.h>
@@ -16,6 +20,7 @@
 #include "benchmark.h"
 
 #include "dgemm.h"
+#include "streambuffer.h"
 
 #ifdef JEVENTS_FOUND
 extern "C" {
@@ -259,28 +264,30 @@ static void stop_workers(threads_t *workers) {
   }
 }
 
-static void result_print(FILE *file, benchmark_result_t result,
-                         hwloc_const_cpuset_t cpuset, const char **pmcs,
-                         const unsigned num_pmcs) {
+static std::ostream &result_print(std::ostream &os,
+                                  benchmark_result_t const &result,
+                                  hwloc_const_cpuset_t &cpuset,
+                                  const char **pmcs, const unsigned num_pmcs) {
   assert(num_pmcs == result.counters);
 
   for (unsigned counter = 0; counter < result.counters + 1; ++counter) {
     int cpu = -1;
     if (counter && (counter - 1 < num_pmcs)) {
-      fprintf(file, "# %s\n", pmcs[counter - 1]);
+      os << "# " << pmcs[counter - 1] << '\n';
     }
     for (unsigned thread = 0; thread < result.threads; ++thread) {
       cpu = hwloc_bitmap_next(cpuset, cpu);
-      fprintf(file, "%2d ", cpu);
+      os << std::setw(3) << cpu << ' ';
       for (unsigned rep = 0; rep < result.repetitions; ++rep) {
-        fprintf(
-            file, "%10" PRIu64 " ",
-            result.data[thread * result.repetitions * (result.counters + 1) +
-                        (result.counters + 1) * rep + counter]);
+        os << std::setw(10)
+           << result.data[thread * result.repetitions * (result.counters + 1) +
+                          (result.counters + 1) * rep + counter] << ' ';
       }
-      fprintf(file, "\n");
+      os << '\n';
     }
   }
+
+  return os;
 }
 
 static benchmark_result_t run_in_parallel(threads_t *workers, benchmark_t *ops,
@@ -555,7 +562,9 @@ int main(int argc, char *argv[]) {
   uint64_t size = l1.size;
   double fill = 0.9;
   double time = 20;
-  FILE *output = stdout;
+  std::ostream *output = &std::cout;
+  std::ostream *tee;
+  std::ofstream file;
   static int auto_tune = 0;
   static int tune = 0;
   static int use_hyperthreads = 1;
@@ -640,7 +649,8 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "File %s already exists.\n", optarg);
         exit(EXIT_FAILURE);
       } else {
-        output = fopen(optarg, "w");
+        file.open(optarg);
+        output = &file;
       }
       break;
     case 's': {
@@ -683,6 +693,24 @@ int main(int argc, char *argv[]) {
     }
     fprintf(stderr, "\n");
   }
+
+#ifdef L4
+  const std::size_t sz = 1024 * 1024;
+  char *const buf = new char[sz];
+  memset(buf, 0, sz);
+  shm_buffer strbuf(buf, sz);
+  std::ostream shm(&strbuf);
+  output = &shm;
+#endif
+
+#ifndef L4
+  if (output == &file) {
+#endif
+    tee = new teestream(std::cout, file);
+    output = tee;
+#ifndef L4
+  }
+#endif
 
   unsigned num_benchmarks = opt_benchmarks == NULL
                                 ? number_benchmarks()
@@ -835,7 +863,7 @@ int main(int argc, char *argv[]) {
       exit(EXIT_FAILURE);
     }
 
-    result_print(output, result, workers->cpuset, pmcs, num_pmcs);
+    result_print(*output, result, workers->cpuset, pmcs, num_pmcs);
   }
 
   stop_workers(workers);
