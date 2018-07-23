@@ -1,6 +1,10 @@
 #pragma once
 
-#ifndef __APPLE__
+#if defined(__APPLE__) || defined(__L4__)
+
+static int mck_is_mckernel() { return 0; }
+
+#else
 
 #include <inttypes.h>
 #include <unistd.h>
@@ -21,10 +25,6 @@ static int mck_pmc_init(int counter, int type, unsigned mode) {
 static int mck_pmc_start(unsigned long counter) { return syscall(602, counter); }
 static int mck_pmc_stop(unsigned long counter) { return syscall(603, counter); }
 static int mck_pmc_reset(int counter) { return syscall(604, counter); }
-
-#else
-
-static int mck_is_mckernel() { return 0; }
 
 #endif
 
