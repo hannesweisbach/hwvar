@@ -9,3 +9,6 @@
 [submodule "cmake/sanitizer"]
 	path = cmake/sanitizer
 	url = git://github.com/arsenm/sanitizers-cmake.git
+[submodule "src/3rd/gsl"]
+	path = src/3rd/gsl
+	url = https://github.com/Microsoft/GSL.git
