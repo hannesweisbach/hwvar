@@ -7,6 +7,8 @@
 #include <barrier.h>
 #include <benchmark.h>
 
+#include "../src/pmcs.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
