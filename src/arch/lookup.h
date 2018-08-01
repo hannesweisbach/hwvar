@@ -1,5 +1,7 @@
 #pragma once
 
+#include <memory>
+
 namespace arch {
 class pmc_data {
 public:
