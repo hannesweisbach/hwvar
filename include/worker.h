@@ -19,7 +19,7 @@ typedef struct work {
   void *arg;
   uint64_t *result;
   unsigned reps;
-  const char **pmcs;
+  pmc const * pmcs;
   unsigned num_pmcs;
 } work_t;
 

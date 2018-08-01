@@ -252,7 +252,7 @@ void *worker(void *arg_) {
     void *benchmark_arg =
         (work->ops->init_arg) ? work->ops->init_arg(work->arg) : work->arg;
 
-    struct pmu *pmus = arch_pmu_init(work->pmcs, work->num_pmcs, arg->cpu);
+    pmu pmu(*work->pmcs, work->reps);
 
     {
       const int err = pthread_barrier_wait(work->barrier);
@@ -267,20 +267,11 @@ void *worker(void *arg_) {
         work->ops->reset_arg(benchmark_arg);
       }
 
-      const uint64_t offset = (work->num_pmcs + 1) * rep;
-      if (work->result) {
-        arch_pmu_begin(pmus, &work->result[offset + 1]);
-      }
-      const uint64_t start = arch_timestamp_begin();
+      pmu.start();
       work->ops->call(benchmark_arg);
-      const uint64_t end = arch_timestamp_end();
-      if (work->result) {
-        arch_pmu_end(pmus, &work->result[offset + 1]);
-        work->result[offset] = end - start;
-      }
+      pmu.stop();
     }
 
-    arch_pmu_free(pmus);
     return_finished_work(arg, work);
 
     if (dirigent)

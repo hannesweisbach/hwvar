@@ -1,26 +1,5 @@
 #pragma once
 
-static inline uint64_t arch_timestamp_begin(void) {
-  unsigned high, low;
-  __asm__ volatile("CPUID\n\t"
-                   "RDTSC\n\t"
-                   "mov %%edx, %0\n\t"
-                   "mov %%eax, %1\n\t"
-                   : "=r"(high), "=r"(low)::"%rax", "%rbx", "%rcx", "%rdx");
-
-  return (uint64_t)high << 32ULL | low;
-}
-
-static inline uint64_t arch_timestamp_end(void) {
-  unsigned high, low;
-  __asm__ volatile("RDTSCP\n\t"
-                   "mov %%edx,%0\n\t"
-                   "mov %%eax,%1\n\t"
-                   "CPUID\n\t"
-                   : "=r"(high), "=r"(low)::"%rax", "%rbx", "%rcx", "%rdx");
-  return (uint64_t)high << 32ULL | low;
-}
-
 #ifdef JEVENTS_FOUND
 #include <iostream>
 #include <memory>
@@ -155,6 +134,7 @@ static inline void cpuid(const int code, uint32_t *a, uint32_t *b, uint32_t *c,
 
 #define MASK(v, high, low) ((v >> low) & ((1 << (high - low + 1)) - 1))
 
+#if 0
 struct pmu {
   struct rdpmc_ctx *ctx;
   int *perf_fds;
@@ -164,7 +144,7 @@ struct pmu {
   int msr_fd;
   uint64_t global_ctrl;
 };
-
+#endif
 static void pmu_info(const std::unique_ptr<fd> &msr_fd) {
   uint32_t eax, ebx, ecx, edx;
 
@@ -212,243 +192,30 @@ static void pmu_info(const std::unique_ptr<fd> &msr_fd) {
   std::cout << "FFPCs: " << ffpc << ", width: " << ff_width << std::endl;
 }
 
-static struct pmu *arch_pmu_init(const pmc *pmcs, const unsigned cpu) {
-  struct pmu *pmus = (struct pmu *)malloc(sizeof(struct pmu));
-  pmus->ctx = (struct rdpmc_ctx *)malloc(sizeof(struct rdpmc_ctx) * pmcs->size());
-  pmus->perf_fds = (int *)malloc(sizeof(int) * pmcs->size());
-  pmus->active = 0;
-  pmus->mckernel = mck_is_mckernel();
-  asprintf(&pmus->msr, "/dev/cpu/%u/msr", cpu);
+#if 0
+class events {
+  std::vector<event> events_;
 
-#if defined(RAWMSR)
-  if (!mck_is_mckernel()) {
-    pmus->msr_fd = open(pmus->msr, O_RDWR);
-    if (pmus->msr_fd < 0) {
-      printf("Opening MSR failed: %d %s\n", errno, strerror(errno));
-      exit(EXIT_FAILURE);
-    }
-  }
-
-  pmu_info(pmus);
-#endif
-
-#if defined(MCK_MCK) || defined(RAWMSR)
-  pmus->global_ctrl = rdmsr(IA32_PERF_GLOBAL_CTRL, -1);
-#endif
-
-  //for (unsigned i = 0; i < pmcs->size(); ++i) {
-  for(const auto & pmc : *pmcs) {
-    struct perf_event_attr attr;
-    const char *event = pmc.name().c_str();
-    int err = resolve_event(event, &attr);
-    if (err) {
-      printf("Error resolving event: \"%s\".\n", event);
-      continue;
-    }
-
-    if (pmus->mckernel) {
-#if defined(MCK_MCK)
-      err = mck_pmc_init(pmus->active, attr.config, 0x4);
-      if (err) {
-        printf("Error configuring PMU with \"%s\" %x\n", event, attr.config);
-        continue;
+public:
+  events(const pmc &pmcs) {
+    for (const auto &pmc : pmcs) {
+      try {
+        events_.emplace_back(pmc.name());
+      } catch (...) {
       }
-#elif defined(MCK_RAWMSR)
-      const uint64_t v = (1 << 22) | (1 << 16) | attr.config;
-      wrmsr(IA32_PERFEVTSEL_BASE + i, v, pmus->msr_fd);
-#else
-      fprintf(stderr, "PMU method not implmented in McKernel.\n");
-#endif
-    } else {
-#if defined(LINUX_JEVENTS)
-      err = rdpmc_open_attr(&attr, &pmus->ctx[pmus->active], NULL);
-      if (err) {
-        printf("Error opening RDPMC context for event \"%s\"\n", event);
-        continue;
-      }
-#elif defined(LINUX_PERF)
-      struct perf_event_attr pe;
-      memset(&pe, 0, sizeof(pe));
-      pe.config = attr.config;
-      pe.config1 = attr.config1;
-      pe.config2 = attr.config2;
-      pe.type = attr.type;
-      pe.size = attr.size;
-      // attr.disabled = 1;
-      pe.exclude_kernel = 1;
-      pe.exclude_hv = 1;
-      err = perf_event_open(&attr, 0, -1, -1, 0);
-      if (err < 0) {
-        printf("perf_event_open failed \"%s\" %d %s\n", event, errno , strerror(errno));
-        continue;
-      }
-      pmus->perf_fds[pmus->active] = err;
-#elif defined(LINUX_RAWMSR)
-      const uint64_t v = (1 << 22) | (1 << 16) | attr.config;
-      wrmsr(IA32_PERFEVTSEL_BASE + i, v, pmus->msr_fd);
-#else
-      fprintf(stderr, "PMU method not implemented in Linux.\n");
-#endif
-    }
-
-    ++pmus->active;
-  }
-
-  if (pmus->mckernel) {
-#if defined(MCK_RAWMSR)
-    wrmsr(IA32_PERF_GLOBAL_CTRL, 0, pmus->msr_fd);
-#elif defined(MCK_MCK)
-    /* If PMUs are deactivated activate them now.
-     * McKernel only initializes them on boot.
-     * If, for example RAWMSR turns them off, they stay off.
-     */
-    if (pmus->global_ctrl == 0) {
-      wrmsr(IA32_PERF_GLOBAL_CTRL, (1 << pmus->active) - 1, -1);
-    }
-#endif
-  } else {
-#if defined(LINUX_RAWMSR)
-    wrmsr(IA32_PERF_GLOBAL_CTRL, 0, pmus->msr_fd);
-#endif
-  }
-
-  return pmus;
-}
-
-static void arch_pmu_free(struct pmu *pmus) {
-  if (!pmus->mckernel) {
-    for (unsigned i = 0; i < pmus->active; ++i) {
-#if defined(LINUX_JEVENTS)
-      rdpmc_close(&pmus->ctx[i]);
-#elif defined(LINUX_PERF)
-      close(pmus->perf_fds[i]);
-#elif defined(LINUX_RAWMSR)
-      wrmsr(IA32_PERFEVTSEL_BASE + i, 0, pmus->msr_fd);
-#endif
-    }
-
-#if defined(LINUX_RAWMSR)
-    wrmsr(IA32_PERF_GLOBAL_CTRL, pmus->global_ctrl, pmus->msr_fd);
-    close(pmus->msr_fd);
-#endif
-  } else {
-    wrmsr(IA32_PERF_GLOBAL_CTRL, pmus->global_ctrl, pmus->msr_fd);
-  }
-
-  free(pmus->ctx);
-  free(pmus->perf_fds);
-  free(pmus->msr);
-  free(pmus);
-}
-
-static void arch_pmu_begin(struct pmu *pmus, uint64_t *data) {
-  if (pmus->mckernel) {
-    for (unsigned i = 0; i < pmus->active; ++i) {
-#if defined(MCK_MCK)
-      mck_pmc_reset(i);
-#elif defined(MCK_RAWMSR)
-      wrmsr(IA32_PMC_BASE + i, 0, -1);
-#endif
-    }
-
-#if defined(MCK_RAWMSR)
-    const uint64_t mask = (1 << pmus->active) - 1;
-    wrmsr(IA32_PERF_GLOBAL_OVF_CTRL, 0, pmus->msr_fd);
-    wrmsr(IA32_PERF_GLOBAL_CTRL, mask, pmus->msr_fd);
-#endif
-  } else {
-    for (unsigned i = 0; i < pmus->active; ++i) {
-#if defined(LINUX_JEVENTS)
-      data[i] = rdpmc_read(&pmus->ctx[i]);
-#elif defined(LINUX_PERF)
-      if (ioctl(pmus->perf_fds[i], PERF_EVENT_IOC_RESET, 0)) {
-        printf("Error in ioctl\n");
-      }
-#elif defined(LINUX_RAWMSR)
-      wrmsr(IA32_PMC_BASE + i, 0, pmus->msr_fd);
-#endif
-    }
-
-#if defined(LINUX_RAWMSR)
-    const uint64_t mask = (1 << pmus->active) - 1;
-    wrmsr(IA32_PERF_GLOBAL_OVF_CTRL, 0, pmus->msr_fd);
-    wrmsr(IA32_PERF_GLOBAL_CTRL, mask, pmus->msr_fd);
-#endif
-  }
-}
-
-static void arch_pmu_end(struct pmu *pmus, uint64_t *data) {
-  if (pmus->mckernel) {
-#if defined(MCK_RAWMSR)
-    wrmsr(IA32_PERF_GLOBAL_CTRL, 0, pmus->msr_fd);
-    const uint64_t ovf = rdmsr(IA32_PERF_GLOBAL_STATUS, pmus->msr_fd);
-    if (ovf) {
-      printf("OVF: %08x\n", ovf);
-      wrmsr(IA32_PERF_GLOBAL_OVF_CTRL, 0, pmus->msr_fd);
-    }
-#endif
-  } else {
-#if defined(LINUX_RAWMSR)
-    wrmsr(IA32_PERF_GLOBAL_CTRL, 0, pmus->msr_fd);
-    const uint64_t ovf = rdmsr(IA32_PERF_GLOBAL_STATUS, pmus->msr_fd);
-    if (ovf) {
-      printf("OVF: %08x\n", ovf);
-      wrmsr(IA32_PERF_GLOBAL_OVF_CTRL, 0, pmus->msr_fd);
-    }
-#endif
-  }
-
-  for (unsigned i = 0; i < pmus->active; ++i) {
-    if (pmus->mckernel) {
-#if defined(MCK_MCK)
-      data[i] = rdpmc(i);
-#elif defined(MCK_RAWMSR)
-      data[i] = rdmsr(IA32_PMC_BASE + i, pmus->msr_fd);
-#endif
-    } else {
-#if defined(LINUX_JEVENTS)
-      data[i] = rdpmc_read(&pmus->ctx[i]) - data[i];
-#elif defined(LINUX_PERF)
-      read(pmus->perf_fds[i], &data[i], sizeof(long long));
-#elif defined(LINUX_RAWMSR)
-      data[i] = rdmsr(IA32_PMC_BASE + i, pmus->msr_fd);
-#endif
     }
   }
-}
-
-#define LINUX_JEVENTS
-//#define LINUX_PERF
-//#define LINUX_RAWMSR
-//#define MCK_MCK
-#define MCK_RAWMSR
-
-#if defined(LINUX_RAWMSR) || defined(MCK_RAWMSR)
-#define RAWMSR
-#endif
-
-#if (defined(LINUX_JEVENTS) + defined(LINUX_PERF) + defined(LINUX_RAWMSR)) > 1
-#error "More than one PMU method for Linux selected."
-#endif
-
-#if (defined(MCK_MCK) + defined(MCK_RAWMSR)) > 1
-#error "More than one PMU method for McKernel selected."
-#endif
-
-template <typename MCK, typename LINUX> class x86_pmu {
-//x86_pmu
+  auto begin() const { return events_.begin(); }
+  auto end() const { return events_.end(); }
+  auto size() const { return events_.size(); }
 };
+#endif
 
-static struct perf_event_attr resolve_pmc(const std::string &name) {
-  struct perf_event_attr attr;
-  const char *event = name.c_str();
-  int err = resolve_event(event, &attr);
-  if (err) {
-    using namespace std::string_literals;
-    throw std::runtime_error("Error resolving event \""s + event + "\"\n"s);
-  }
-  return attr;
-}
+struct x86_pmc_base {
+  virtual ~x86_pmc_base() = default;
+  virtual void start(gsl::span<uint64_t>::iterator) = 0;
+  virtual void stop(gsl::span<uint64_t>::iterator) = 0;
+};
 
 struct mck_mck_policy {
   static int init(const int active, const int config) {
@@ -473,19 +240,72 @@ struct mck_mck_policy {
   static uint64_t read(const int i) { return rdpmc(i); }
 };
 
-struct mck_rawmsr_policy {
-  static int init(const int i, const int config) {
+class msr_mck {
+public:
+  msr_mck() {}
+  uint64_t rdmsr(const uint32_t reg) const { return syscall(850, reg); }
+  uint64_t wrmsr(const uint32_t reg, const uint64_t val) const {
+    return syscall(851, reg, val);
+  }
+};
+
+class msr_linux {
+  std::unique_ptr<fd> fd_;
+
+  static unsigned cpu() {
+    int cpu = sched_getcpu();
+    if (cpu < 0) {
+      using namespace std::string_literals;
+      throw std::runtime_error("Error getting CPU number: "s + strerror(errno) +
+                               " (" + std::to_string(errno) + ")\n");
+    }
+    /* TODO: check thread affinity mask
+     * - has a single CPU
+     * - this single CPU is this CPU
+     */
+    return cpu;
+  }
+
+public:
+  msr_linux()
+      : fd_(std::make_unique<fd>(open(
+            ("/dev/cpu/" + std::to_string(cpu()) + "/msr").c_str(), O_RDWR))) {}
+
+  uint64_t rdmsr(const uint32_t reg) {
+    uint64_t v;
+    const ssize_t ret = pread(static_cast<int>(*fd_), &v, sizeof(v), reg);
+    if (ret != sizeof(v)) {
+      std::cerr << "Reading MSR " << std::hex << reg << std::dec << " failed."
+                << std::endl;
+    }
+    return v;
+  }
+
+  uint64_t wrmsr(const uint32_t reg, const uint64_t val) {
+    const ssize_t ret = pwrite(static_cast<int>(*fd_), &val, sizeof(val), reg);
+    if (ret != sizeof(val)) {
+      std::cerr << "Writing MSR " << std::hex << reg << std::dec << " failed."
+                << std::endl;
+    }
+    return ret;
+  }
+};
+
+template <typename MSR>
+class rawmsr_policy : MSR {
+public:
+  int init(const int i, const int config) {
     const uint64_t v = (1 << 22) | (1 << 16) | config;
     wrmsr(IA32_PERFEVTSEL_BASE + i, v, {});
     return 0;
   }
 
-  static void reset(const int i) { wrmsr(IA32_PMC_BASE + i, 0, {}); }
-  static void start(const unsigned long mask) {
+  void reset(const int i) { wrmsr(IA32_PMC_BASE + i, 0, {}); }
+  void start(const unsigned long mask) {
     wrmsr(IA32_PERF_GLOBAL_OVF_CTRL, 0, {});
     wrmsr(IA32_PERF_GLOBAL_CTRL, mask, {});
   }
-  static void stop(const unsigned long mask) {
+  void stop(const unsigned long mask) {
     wrmsr(IA32_PERF_GLOBAL_CTRL, 0, {});
     const uint64_t ovf = rdmsr(IA32_PERF_GLOBAL_STATUS, {});
     if (ovf) {
@@ -493,26 +313,26 @@ struct mck_rawmsr_policy {
       wrmsr(IA32_PERF_GLOBAL_OVF_CTRL, 0, {});
     }
   }
-  static uint64_t read(const int i) { return rdmsr(IA32_PMC_BASE + i, {}); }
+  /* Should be equivalent to rdpmc instruction */
+  uint64_t read(const int i) { return rdmsr(IA32_PMC_BASE + i, {}); }
 };
 
 template <typename ACCESS>
-class mck_msr {
-  gsl::span<uint64_t>::const_iterator buf_;
+class msr_pmc : ACCESS, public x86_pmc_base {
   uint64_t global_ctrl_;
   int active = 0;
   unsigned long active_mask_ = 0;
 public:
-/* sufficient to pass vec of perf_event_attr */
-  mck_msr(const pmc &pmcs, gsl::span<uint64_t>::const_iterator buf)
-      : buf_(buf), global_ctrl_(rdmsr(IA32_PERF_GLOBAL_CTRL, -1)) {
+  /* sufficient to pass vec of perf_event_attr */
+  msr_pmc(const pmc &pmcs)
+      : global_ctrl_(rdmsr(IA32_PERF_GLOBAL_CTRL, -1)) {
     pmu_info({});
     for (const auto &pmc : pmcs) {
-      struct perf_event_attr attr = resolve_pmc(pmc.name());
-      const int err = ACCESS::init(active, attr.config);
+      const int err = ACCESS::init(active, pmc.data().attr().config);
       if (err) {
-        std::cerr << "Error configuring PMU with " << pmc.name() << std::hex
-                  << attr.config << std::dec << std::endl;
+        std::cerr << "Error configuring PMU " << pmc.name() << " with "
+                  << std::hex << pmc.data().attr().config << std::dec
+                  << std::endl;
         continue;
       }
       ++active;
@@ -520,178 +340,164 @@ public:
 
     active_mask_ = static_cast<unsigned long>((1 << active) - 1);
   }
-  ~mck_msr() { wrmsr(IA32_PERF_GLOBAL_CTRL, global_ctrl_, {}); }
+  ~msr_pmc() { wrmsr(IA32_PERF_GLOBAL_CTRL, global_ctrl_, {}); }
 
-  void start() {
+  void start(gsl::span<uint64_t>::iterator) override {
     for (int i = 0; i < active; ++i) {
       ACCESS::reset(i);
     }
     ACCESS::start(active_mask_);
   }
 
-  void stop() {
+  void stop(gsl::span<uint64_t>::iterator buf) override {
     ACCESS::stop(active_mask_);
     for (int i = 0; i < active; ++i) {
-      *buf_ = ACCESS::read(i);
-      ++buf_;
+      *buf = ACCESS::read(i);
+      ++buf;
+    }
+  }
+};
+
+using mck_rawmsr = msr_pmc<rawmsr_policy<msr_mck>>;
+using mck_mckmsr = msr_pmc<mck_mck_policy>;
+using linux_rawmsr = msr_pmc<rawmsr_policy<msr_linux>>;
+
+class linux_jevents : public x86_pmc_base {
+  struct rdpmc_t {
+    struct rdpmc_ctx ctx;
+    int close = 0;
+
+    rdpmc_t(struct perf_event_attr attr) {
+      const int err = rdpmc_open_attr(&attr, &ctx, NULL);
+      if (err) {
+        throw std::runtime_error(std::to_string(errno) + ' ' + strerror(errno));
+      }
+
+      close = 1;
+    }
+    ~rdpmc_t() {
+      if (close) {
+        rdpmc_close(&ctx);
+      }
+    }
+    rdpmc_t(const rdpmc_t &) = delete;
+    rdpmc_t(rdpmc_t &&rhs) {
+      this->ctx = rhs.ctx;
+      this->close = rhs.close;
+      rhs.close = 0;
+    }
+
+    uint64_t read() { return rdpmc_read(&ctx); }
+  };
+
+  std::vector<rdpmc_t> rdpmc_ctxs;
+
+public:
+  linux_jevents(const pmc &pmcs) {
+    for (const auto &pmc : pmcs) {
+      rdpmc_ctxs.emplace_back(pmc.data().attr());
+    }
+  }
+
+  void start(gsl::span<uint64_t>::iterator buf) override {
+    for (auto &&pmc : rdpmc_ctxs) {
+      *buf = pmc.read();
+      ++buf;
+    }
+  }
+
+  void stop(gsl::span<uint64_t>::iterator buf) override {
+    for (auto &&pmc : rdpmc_ctxs) {
+      *buf = pmc.read() - *buf;
+      ++buf;
+    }
+  }
+};
+
+class linux_perf : public x86_pmc_base {
+  std::vector<std::unique_ptr<fd>> perf_fds;
+
+public:
+  linux_perf(const pmc &pmcs) {
+    for (const auto &pmc : pmcs) {
+      struct perf_event_attr pe;
+      memset(&pe, 0, sizeof(pe));
+      const auto &attr = pmc.data().attr();
+      pe.config = attr.config;
+      pe.config1 = attr.config1;
+      pe.config2 = attr.config2;
+      pe.type = attr.type;
+      pe.size = attr.size;
+      // attr.disabled = 1;
+      pe.exclude_kernel = 1;
+      pe.exclude_hv = 1;
+      try {
+        perf_fds.push_back(make_perf_fd(pe));
+      } catch (const std::exception &e) {
+        std::cerr << pmc.name() << ": " << e.what() << std::endl;
+      }
+    }
+  }
+
+  void start(gsl::span<uint64_t>::iterator) override {
+    for (const auto &perf_fd : perf_fds) {
+      if (ioctl(static_cast<int>(*perf_fd), PERF_EVENT_IOC_RESET, 0)) {
+        std::cerr << "Error in ioctl\n";
+      }
+    }
+  }
+
+  void stop(gsl::span<uint64_t>::iterator buf) override {
+    long long v;
+    for (const auto &perf_fd : perf_fds) {
+      const auto ret = read(static_cast<int>(*perf_fd), &v, sizeof(v));
+      if (ret < 0) {
+        std::cerr << "perf: Error reading performance counter: " << errno
+                  << ": " << strerror(errno) << std::endl;
+      } else if (ret != sizeof(v)) {
+        std::cerr << "perf: Error reading " << sizeof(v) << " bytes."
+                  << std::endl;
+      }
+      *buf = v;
+      ++buf;
     }
   }
 };
 
 
-class x86_64_pmu : arch_pmu_base<x86_64_pmu> {
-  const pmc &pmcs_;
-  size_t iterations_;
-
-  bool is_mckernel;
-
-  std::vector<std::unique_ptr<rdpmc_ctx>> rdpmc_ctxs;
-  std::vector<std::unique_ptr<fd>> perf_fds;
-  std::unique_ptr<fd> msr_fd;
-  uint64_t global_ctrl_;
-  int active = 0;
+template <typename MCK, typename LINUX> class x86_pmu {
+  std::unique_ptr<x86_pmc_base> backend_;
 
 public:
-  x86_64_pmu(const pmc &pmcs, const size_t iterations, const unsigned cpu)
-      : arch_pmu_base(pmcs.size() * iterations), pmcs_(pmcs),
-        iterations_(iterations), is_mckernel(mck_is_mckernel())
-#if defined(RAWMSR)
-        ,
-        msr_fd(std::make_unique<fd>(open(
-            ("/dev/cpu/" + std::to_string(cpu) + "/msr").c_str(), O_RDWR)))
-#endif
-#if defined(MCK_MCK) || defined(RAWMSR)
-        ,
-        global_ctrl_(rdmsr(IA32_PERF_GLOBAL_CTRL, -1))
-#endif
-  {
-#if defined(RAWMSR)
-    if (!msr_fd) {
-      throw std::runtime_error("Opening MSR failed: " + std::to_string(errno) +
-                               strerror(errno) + '\n');
-    }
-#endif
+  x86_pmu(const pmc &pmcs)
+      : backend_(mck_is_mckernel() ? static_cast<std::unique_ptr<x86_pmc_base>>(
+                                         std::make_unique<MCK>(pmcs))
+                                   : static_cast<std::unique_ptr<x86_pmc_base>>(
+                                         std::make_unique<LINUX>(pmcs))) {}
 
-    pmu_info(msr_fd);
+  void start(gsl::span<uint64_t>::iterator it) { backend_->start(it); }
+  void stop(gsl::span<uint64_t>::iterator it) { backend_->stop(it); }
 
-    for (const auto &pmc : pmcs_) {
-      struct perf_event_attr attr;
-      int err = resolve_event(pmc.name().c_str(), &attr);
-      if (err) {
-        std::cout << "Error resolving event: \"" << pmc.name() << "\".\n";
-        continue;
-      }
+  uint64_t timestamp_begin() {
+    unsigned high, low;
+    __asm__ volatile("CPUID\n\t"
+                     "RDTSC\n\t"
+                     "mov %%edx, %0\n\t"
+                     "mov %%eax, %1\n\t"
+                     : "=r"(high), "=r"(low)::"%rax", "%rbx", "%rcx", "%rdx");
 
-      if (is_mckernel) {
-#if defined(MCK_MCK)
-        int err = mck_pmc_init(active, attr.config, 0x4);
-        if (err) {
-          std::cerr << "Error configuring PMU with \"" << pmc.name() << "\" "
-                    << std::hex << attr.config << std::dec << '\n';
-          continue;
-        }
-#elif defined(MCK_RAWMSR)
-        const uint64_t v = (1 << 22) | (1 << 16) | attr.config;
-        wrmsr(IA32_PERFEVTSEL_BASE + active, v, msr_fd);
-#else
-        std::cerr << "PMU method not implmented in McKernel.\n";
-#endif
-      } else {
-#if defined(LINUX_JEVENTS)
-        auto ctx = std::make_unique<rdpmc_ctx>();
-        err = rdpmc_open_attr(&attr, ctx.get(), NULL);
-        if (err) {
-          std::cout << "Error opening RDPMC context for event \"" << pmc.name()
-                    << "\"\n";
-          continue;
-        } else {
-          rdpmc_ctxs.push_back(std::move(ctx));
-        }
-#elif defined(LINUX_PERF)
-        struct perf_event_attr pe;
-        memset(&pe, 0, sizeof(pe));
-        pe.config = attr.config;
-        pe.config1 = attr.config1;
-        pe.config2 = attr.config2;
-        pe.type = attr.type;
-        pe.size = attr.size;
-        // attr.disabled = 1;
-        pe.exclude_kernel = 1;
-        pe.exclude_hv = 1;
-        try {
-          perf_fds.push_back(make_perf_fd(pe));
-        } catch (const auto &e) {
-          std::cerr << pmc.name() << ": " << e.what() << std::endl;
-          continue;
-        }
-#elif defined(LINUX_RAWMSR)
-        const uint64_t v = (1 << 22) | (1 << 16) | attr.config;
-        wrmsr(IA32_PERFEVTSEL_BASE + active, v, msr_fd);
-#else
-        std::cerr << "PMU method not implemented in Linux.\n";
-#endif
-      }
-
-      ++active;
-    }
+    return (uint64_t)high << 32ULL | low;
   }
 
-  ~x86_64_pmu() {
-    if (!is_mckernel) {
-#if defined(LINUX_RAWMSR)
-      for (int i = 0; i < active; ++i) {
-        wrmsr(IA32_PERFEVTSEL_BASE + i, 0, msr_fd);
-      }
-
-      wrmsr(IA32_PERF_GLOBAL_CTRL, global_ctrl_, msr_fd);
-#endif
-    } else {
-      wrmsr(IA32_PERF_GLOBAL_CTRL, global_ctrl_, msr_fd);
-    }
+  uint64_t timestamp_end() {
+    unsigned high, low;
+    __asm__ volatile("RDTSCP\n\t"
+                     "mov %%edx,%0\n\t"
+                     "mov %%eax,%1\n\t"
+                     "CPUID\n\t"
+                     : "=r"(high), "=r"(low)::"%rax", "%rbx", "%rcx", "%rdx");
+    return (uint64_t)high << 32ULL | low;
   }
-
-  void begin() {
-    if (is_mckernel) {
-      for (int i = 0; i < active; ++i) {
-#if defined(MCK_MCK)
-        mck_pmc_reset(i);
-#elif defined(MCK_RAWMSR)
-        wrmsr(IA32_PMC_BASE + i, 0, msr_fd);
-#endif
-      }
-
-#if defined(MCK_RAWMSR)
-      const uint64_t mask = (1 << active) - 1;
-      wrmsr(IA32_PERF_GLOBAL_OVF_CTRL, 0, msr_fd);
-      wrmsr(IA32_PERF_GLOBAL_CTRL, mask, msr_fd);
-#endif
-    } else {
-#if defined(LINUX_JEVENTS)
-      for (auto &&ctx : rdpmc_ctxs) {
-        //data[i] = rdpmc_read(&pmus->ctx[i]);
-        rdpmc_read(ctx.get());
-      }
-#elif defined(LINUX_PERF)
-      for (const auto &perf_fd : perf_fds) {
-        if (ioctl(static_cast<int>(*perf_fd), PERF_EVENT_IOC_RESET, 0)) {
-          std::cerr << "Error in ioctl\n";
-        }
-      }
-#endif
-      for (unsigned i = 0; i < active; ++i) {
-#if defined(LINUX_RAWMSR)
-      wrmsr(IA32_PMC_BASE + i, 0, msr_fd);
-#endif
-      }
-
-#if defined(LINUX_RAWMSR)
-      const uint64_t mask = (1 << pmus->active) - 1;
-      wrmsr(IA32_PERF_GLOBAL_OVF_CTRL, 0, pmus->msr_fd);
-      wrmsr(IA32_PERF_GLOBAL_CTRL, mask, pmus->msr_fd);
-#endif
-    }
-  }
-  void end() {}
 };
 
 #else /* JEVENTS_FOUND */
