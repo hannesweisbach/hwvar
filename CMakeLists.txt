@@ -65,6 +65,14 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "BlueGene")
   set(HAVE_SCHED_GETCPU OFF)
 endif()
 
+include(FindPackageHandleStandardArgs)
+
+find_path(GSL_INCDIR
+  NAMES gsl/gsl
+  PATHS ${CMAKE_CURRENT_SOURCE_DIR}/src/3rd/gsl/include
+  NO_DEFAULT_PATH)
+find_package_handle_standard_args(GSL DEFAULT_MSG GSL_INCDIR)
+
 find_path(JEVENTS_INCDIR
   NAMES jevents.h
   HINTS ${JEVENTS_DIR}
@@ -72,7 +80,6 @@ find_path(JEVENTS_INCDIR
 find_library(JEVENTS_LIBRARIES jevents
   HINTS ${JEVENTS_DIR}
   PATH_SUFFIXES lib lib32 lib64)
-include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(JEVENTS DEFAULT_MSG JEVENTS_LIBRARIES JEVENTS_INCDIR)
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "BlueGene")

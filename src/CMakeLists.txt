@@ -3,6 +3,9 @@ add_executable(hwperfvar main.cc worker.c barrier.c streambuffer.cc)
 set_source_files_properties(main.c PROPERTIES COMPILE_DEFINITIONS _GNU_SOURCE) # for asprintf
 set_source_files_properties(worker.c PROPERTIES COMPILE_DEFINITIONS _GNU_SOURCE) # for glibc-sched.h
 target_link_libraries(hwperfvar benchmark ${HWLOC_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
+set_property(TARGET hwperfvar PROPERTY CXX_STANDARD 14)
+#set_source_files_properties(worker.cc PROPERTIES INCLUDE_DIRECTORIES ${GSL_INCDIR})
+target_include_directories(hwperfvar PRIVATE ${GSL_INCDIR})
 if(Sanitizers_FOUND)
   add_sanitizers(hwperfvar)
 endif()
