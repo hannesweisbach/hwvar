@@ -101,7 +101,7 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "BlueGene")
 endif()
 
 
-include_directories(include ${CMAKE_CURRENT_BINARY_DIR} ${HWLOC_INCLUDE_DIRS})
+include_directories(include src/arch ${CMAKE_CURRENT_BINARY_DIR} ${HWLOC_INCLUDE_DIRS})
 
 add_subdirectory(src)
 
