@@ -748,7 +748,12 @@ int main(int argc, char *argv[]) {
       std::stringstream ss(opt_pmcs);
       std::string token;
       while (std::getline(ss, token, ',')) {
-        pmcs.add(token);
+        try {
+          pmcs.add(token);
+        } catch (const std::exception &e) {
+          std::cerr << "Error resolving PMC \"" << token << "\": " << e.what()
+                    << std::endl;
+        }
       }
     }
 #else
