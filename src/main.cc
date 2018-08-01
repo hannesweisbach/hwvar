@@ -25,14 +25,8 @@
 
 #include <sstream>
 #include <iterator>
-#include "pmcs.h"
 
-#ifdef JEVENTS_FOUND
-extern "C" {
-#include <jevents.h>
-#include <rdpmc.h>
-}
-#endif
+#include "pmcs.h"
 
 static uint64_t get_time() {
 #ifdef HAVE_CLOCK_GETTIME
@@ -556,11 +550,6 @@ int main(int argc, char *argv[]) {
     printf("hwloc_topology_load() failed\n");
     exit(EXIT_FAILURE);
   }
-
-#ifdef JEVENTS_FOUND
-  // Initialize the racy libjevents.
-  read_events(NULL);
-#endif
 
   struct hwloc_obj_attr_u::hwloc_cache_attr_s l1 = l1_attributes(topology);
 
