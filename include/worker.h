@@ -2,13 +2,13 @@
 #include <pthread.h>
 #include <stdint.h>
 
-#include <hwloc.h>
 
 #include <gsl/gsl>
 
 #include <barrier.h>
 #include <benchmark.h>
 
+#include "../src/hwloc"
 #include "../src/pmcs.h"
 
 #ifdef __cplusplus
@@ -28,8 +28,7 @@ enum state { IDLE, QUEUED, WORKING, DONE };
 
 struct arg {
   hwloc_topology_t topology;
-  hwloc_const_cpuset_t cpuset;
-  char *cpuset_string;
+  hwloc::cpuset cpuset;
   pthread_mutex_t lock;
   pthread_cond_t cv;
   work_t *work;
@@ -49,7 +48,7 @@ typedef struct thread_data {
 
 typedef struct threads {
   thread_data_t *threads;
-  hwloc_const_cpuset_t cpuset;
+  hwloc::cpuset cpuset;
 } threads_t;
 
 typedef struct step {

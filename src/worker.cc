@@ -124,8 +124,8 @@ static unsigned current_cpu_hwloc(hwloc_topology_t topology) {
 }
 
 #ifdef HAVE_SCHED_H
-static hwloc_cpuset_t current_cpuset_getaffinity() {
-  hwloc_cpuset_t ret = hwloc_bitmap_alloc();
+static hwloc::cpuset current_cpuset_getaffinity() {
+  hwloc::cpuset ret;
   cpu_set_t cpuset;
 
   if (sched_getaffinity(0, sizeof(cpuset), &cpuset)) {
@@ -134,7 +134,7 @@ static hwloc_cpuset_t current_cpuset_getaffinity() {
 
   for (int cpu = 0; cpu < CPU_SETSIZE; ++cpu) {
     if (CPU_ISSET(cpu, &cpuset)) {
-      hwloc_bitmap_set(ret, (unsigned)cpu);
+      ret.set((unsigned)cpu);
     }
   }
 
@@ -154,7 +154,8 @@ static unsigned current_cpu_getaffinity() {
 static void bind_thread(struct arg *arg) {
   if (arg->do_binding) {
     if (hwloc_topology_is_thissystem(arg->topology)) {
-      if (hwloc_set_cpubind(arg->topology, arg->cpuset, HWLOC_CPUBIND_THREAD)) {
+      if (hwloc_set_cpubind(arg->topology, arg->cpuset.get(),
+                            HWLOC_CPUBIND_THREAD)) {
         perror("hwloc_set_cpubind() failed");
       }
     } else {
@@ -175,42 +176,32 @@ static void bind_thread(struct arg *arg) {
                           hwloc_cpuset);
 
 #ifdef HAVE_SCHED_H
-    hwloc_cpuset_t sched_cpuset = current_cpuset_getaffinity();
+    hwloc::bitmap sched_cpuset = current_cpuset_getaffinity();
     const unsigned sched_cpu = current_cpu_getaffinity();
-    char sched_cpuset_str[16];
-    hwloc_bitmap_snprintf(sched_cpuset_str, sizeof(sched_cpuset_str),
-                          sched_cpuset);
 #endif
 
-    const int equal =
-        hwloc_bitmap_isequal(arg->cpuset, hwloc_cpuset)
-        /* Unfortunately hwloc_get_last_cpu_location() does not (yet?) work
-           under McKernel. */
-        && (mck_is_mckernel() || (arg->cpu == hwloc_cpu))
+    const int equal = hwloc_bitmap_isequal(arg->cpuset.get(), hwloc_cpuset)
+                      /* Unfortunately hwloc_get_last_cpu_location() does not
+                         (yet?) work under McKernel. */
+                      && (mck_is_mckernel() || (arg->cpu == hwloc_cpu))
 #ifdef HAVE_SCHED_H
-        && hwloc_bitmap_isequal(arg->cpuset, sched_cpuset) &&
-        (arg->cpu == sched_cpu)
+                      &&
+                      arg->cpuset.isequal( sched_cpuset) &&
+                      (arg->cpu == sched_cpu)
 #endif
         ;
 
     if (!equal) {
-      fprintf(stderr,
-              "Target: %s/%02d, getaffinity/cpu(): %s/%02d, hwloc: %s/%02d\n",
-              arg->cpuset_string, arg->cpu,
+      std::cerr << "Target: " << arg->cpuset << '/' << arg->cpu;
 #ifdef HAVE_SCHED_H
-              sched_cpuset_str, sched_cpu,
-#else
-              "N/A", -1,
+      std::cerr << ", getaffinity/cpu(): " << sched_cpuset << '/' << sched_cpu;
 #endif
-              hwloc_cpuset_str, hwloc_cpu);
+      std::cerr << ", hwloc: " << hwloc_cpuset_str << '/' << hwloc_cpu
+                << std::endl;
     } else {
-      fprintf(stderr, "Thread bound to %s/%02d\n", arg->cpuset_string,
-              arg->cpu);
+      std::cerr << "Thread bound to " << arg->cpuset << '/' << arg->cpu << '\n';
     }
     hwloc_bitmap_free(hwloc_cpuset);
-#ifdef HAVE_SCHED_H
-    hwloc_bitmap_free(sched_cpuset);
-#endif
   } else {
     /* If there's no binding at least record the current CPU number */
 #ifdef HAVE_SCHED_H
@@ -279,7 +270,7 @@ void *worker(void *arg_) {
   }
 
   if (!dirigent)
-    fprintf(stderr, "Thread %s stopped.\n", arg->cpuset_string);
+    std::cerr << "Thread " << arg->cpuset << " stopped.\n";
 
   return NULL;
 }

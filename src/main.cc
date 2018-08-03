@@ -51,9 +51,8 @@ static uint64_t get_time() {
 }
 
 static threads_t *spawn_workers(hwloc_topology_t topology,
-                                hwloc_const_cpuset_t cpuset,
-                                int include_hyperthreads,
-                                int do_binding) {
+                                const hwloc::cpuset &cpuset,
+                                int include_hyperthreads, int do_binding) {
   const hwloc_obj_type_t type =
       (include_hyperthreads) ? HWLOC_OBJ_PU : HWLOC_OBJ_CORE;
   const int depth = hwloc_get_type_or_below_depth(topology, type);
@@ -65,10 +64,8 @@ static threads_t *spawn_workers(hwloc_topology_t topology,
     exit(EXIT_FAILURE);
   }
 
-  char *str;
-  hwloc_bitmap_asprintf(&str, cpuset);
-  fprintf(stderr, "Spawning %d workers: %s\n", hwloc_bitmap_weight(cpuset), str);
-  free(str);
+  std::cerr << "Spawning " << cpuset.size() << " workers: " << cpuset
+            << std::endl;
 
   workers->threads =
       (thread_data_t *)malloc(sizeof(thread_data_t) * num_threads);
@@ -77,7 +74,7 @@ static threads_t *spawn_workers(hwloc_topology_t topology,
   }
 
   // iterate over all cores and pick the ones in the cpuset
-  hwloc_cpuset_t allocated = hwloc_bitmap_alloc();
+  hwloc::cpuset allocated;
   for (unsigned pu = 0, i = 0; pu < num_threads; ++pu) {
     /* TODO Awesome:
      * If no object for that type exists, NULL is returned. If there
@@ -90,14 +87,13 @@ static threads_t *spawn_workers(hwloc_topology_t topology,
       exit(EXIT_FAILURE);
     }
 
-    hwloc_cpuset_t tmp = hwloc_bitmap_dup(obj->cpuset);
+    hwloc::cpuset tmp(obj->cpuset);
+    tmp.singlify();
     // TODO might this get the same mask for two sets?!
-    hwloc_bitmap_singlify(tmp);
-    if (!hwloc_bitmap_isincluded(tmp, cpuset)) {
-      hwloc_bitmap_free(tmp);
+    if (!tmp.isincluded(cpuset)) {
       continue;
     }
-    const int cpunum_check = hwloc_bitmap_first(tmp);
+    const int cpunum_check = tmp.first();
     if (cpunum_check < 0) {
       fprintf(stderr, "No index is set in the bitmask\n");
       exit(EXIT_FAILURE);
@@ -119,14 +115,13 @@ static threads_t *spawn_workers(hwloc_topology_t topology,
     thread->thread_arg.cpu = cpunum;
     thread->thread_arg.cpuset = tmp;
     thread->thread_arg.do_binding = do_binding;
-    hwloc_bitmap_asprintf(&thread->thread_arg.cpuset_string, tmp);
 #if 0
     fprintf(stderr, "Found L:%u P:%u %s %d %d %d\n", obj->logical_index,
             obj->os_index, thread->thread_arg.cpuset_string, i, pu,
             cpunum);
 #endif
 
-    hwloc_bitmap_set(allocated, cpunum);
+    allocated.set(cpunum);
     pthread_mutex_unlock(&thread->thread_arg.lock);
 
     if (i > 0) {
@@ -142,7 +137,7 @@ static threads_t *spawn_workers(hwloc_topology_t topology,
     i = i + 1;
   }
 
-  assert(hwloc_bitmap_weight(allocated) == hwloc_bitmap_weight(cpuset));
+  assert(allocated.size() == cpuset.size());
 
   workers->cpuset = allocated;
 
@@ -266,7 +261,7 @@ static void stop_workers(threads_t *workers) {
   step_t *step = init_step(1);
 
   int err = 0;
-  for (int i = 0; i < hwloc_bitmap_weight(workers->cpuset); ++i) {
+  for (int i = 0; i < workers->cpuset.size(); ++i) {
     if (workers->threads[i].thread_arg.dirigent) { // skip dirigent
       continue;
     }
@@ -283,7 +278,7 @@ static void stop_workers(threads_t *workers) {
 static std::unique_ptr<benchmark_result>
 run_in_parallel(threads_t *workers, benchmark_t *ops,
                 const unsigned repetitions, const pmc &pmcs) {
-  const int cpus = hwloc_bitmap_weight(workers->cpuset);
+  const int cpus = workers->cpuset.size();
   auto result =
       std::make_unique<benchmark_result>(workers->cpuset, pmcs, repetitions);
   step_t *step = init_step(cpus);
@@ -316,7 +311,7 @@ run_in_parallel(threads_t *workers, benchmark_t *ops,
 static std::unique_ptr<benchmark_result>
 run_one_by_one(threads_t *workers, benchmark_t *ops, const unsigned repetitions,
                const pmc &pmcs) {
-  const int cpus = hwloc_bitmap_weight(workers->cpuset);
+  const int cpus = workers->cpuset.size();
   auto result =
       std::make_unique<benchmark_result>(workers->cpuset, pmcs, repetitions);
   step_t *step = init_step(1);
@@ -364,14 +359,13 @@ run_one_by_one(threads_t *workers, benchmark_t *ops, const unsigned repetitions,
 
 static std::unique_ptr<benchmark_result>
 run_two_benchmarks(threads_t *workers, benchmark_t *ops1, benchmark_t *ops2,
-                   hwloc_const_cpuset_t set1, hwloc_const_cpuset_t set2,
+                   const hwloc::cpuset &set1, const hwloc::cpuset &set2,
                    const unsigned repetitions, const pmc &pmcs) {
-  assert(!hwloc_bitmap_intersects(set1, set2));
-  hwloc_cpuset_t cpuset = hwloc_bitmap_alloc();
-  hwloc_bitmap_or(cpuset, set1, set2);
-  hwloc_bitmap_and(cpuset, cpuset, workers->cpuset);
-  assert(hwloc_bitmap_isincluded(cpuset, workers->cpuset));
-  const int cpus = hwloc_bitmap_weight(cpuset);
+  assert(!set1.intersects(set2));
+  hwloc::bitmap cpuset = set1 | set2;
+  cpuset &= workers->cpuset;
+  assert(cpuset.isincluded(workers->cpuset));
+  const int cpus = cpuset.size();
   assert(cpus > 0);
   auto result = std::make_unique<benchmark_result>(cpuset, pmcs, repetitions);
   step_t *step = init_step(cpus);
@@ -379,8 +373,8 @@ run_two_benchmarks(threads_t *workers, benchmark_t *ops1, benchmark_t *ops2,
   for (int i = 0; i < cpus; ++i) {
     struct arg *arg = &workers->threads[i].thread_arg;
     work_t *work = &step->work[i];
-    work->ops = hwloc_bitmap_isset(set1, arg->cpu) ? ops1 : ops2;
-    work->arg = hwloc_bitmap_isset(set1, arg->cpu) ? ops1->state : ops2->state;
+    work->ops = set1.isset(arg->cpu) ? ops1 : ops2;
+    work->arg = set1.isset(arg->cpu) ? ops1->state : ops2->state;
     work->barrier = &step->barrier;
     work->results = result->buffer_for_thread(i);
     work->reps = repetitions;
@@ -396,7 +390,6 @@ run_two_benchmarks(threads_t *workers, benchmark_t *ops1, benchmark_t *ops2,
     wait_until_done(&workers->threads[i].thread_arg);
   }
 
-  hwloc_bitmap_free(cpuset);
   free_step(step);
 
   return result;
@@ -547,9 +540,8 @@ int main(int argc, char *argv[]) {
   static int tune = 0;
   static int use_hyperthreads = 1;
   static int do_binding = 1;
-  hwloc_cpuset_t cpuset1 = hwloc_bitmap_alloc();
-  hwloc_cpuset_t cpuset2 = hwloc_bitmap_alloc();
-  hwloc_cpuset_t runset = hwloc_bitmap_alloc();
+  hwloc::cpuset cpuset1;
+  hwloc::cpuset cpuset2;
 
   static struct option options[] = {
       {"policy", required_argument, NULL, 'p'},
@@ -578,16 +570,10 @@ int main(int argc, char *argv[]) {
     errno = 0;
     switch (c) {
     case 1:
-      if (hwloc_bitmap_list_sscanf(cpuset1, optarg) < 0) {
-        fprintf(stderr, "Error parsing cpuset %s\n", optarg);
-        exit(EXIT_FAILURE);
-      }
+      cpuset1 = hwloc::bitmap(optarg, hwloc::bitmap::list_tag{});
       break;
     case 2:
-      if (hwloc_bitmap_list_sscanf(cpuset2, optarg) < 0) {
-        fprintf(stderr, "Error parsing cpuset %s\n", optarg);
-        exit(EXIT_FAILURE);
-      }
+      cpuset2 = hwloc::bitmap(optarg, hwloc::bitmap::list_tag{});
       break;
     case 'p':
       if (strcmp(optarg, "parallel") == 0) {
@@ -773,39 +759,29 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  hwloc_const_cpuset_t global = hwloc_topology_get_topology_cpuset(topology);
+  const hwloc::bitmap global = hwloc_topology_get_topology_cpuset(topology);
 
   /* default is the whole machine */
-  if (hwloc_bitmap_iszero(cpuset1)) {
-    hwloc_bitmap_copy(cpuset1, global);
+  if (!cpuset1) {
+    cpuset1 = global;
   }
 
-  if (!hwloc_bitmap_isincluded(cpuset1, global)) {
-    fprintf(stderr, "cpuset-1 is not a subset of the complete cpuset.\n");
-    char *set1str, *setstr;
-    hwloc_bitmap_list_asprintf(&set1str, cpuset1);
-    hwloc_bitmap_list_asprintf(&setstr, global);
-    fprintf(stderr, "cpuset-1: %s\n", set1str);
-    fprintf(stderr, "global:   %s\n", setstr);
-    free(setstr);
-    free(set1str);
+  if (!cpuset1.isincluded(global)) {
+    std::cerr << "cpuset-1 is not a subset of the complete cpuset.\n";
+    std::cerr << "cpuset-1: " << cpuset1 << "\n";
+    std::cerr << "global:   " << global << " \n";
     exit(EXIT_FAILURE);
   }
 
-  if (!hwloc_bitmap_isincluded(cpuset2, global)) {
-    fprintf(stderr, "cpuset-2 is not a subset of the complete cpuset.\n");
-    char *set2str, *setstr;
-    hwloc_bitmap_list_asprintf(&set2str, cpuset2);
-    hwloc_bitmap_list_asprintf(&setstr, global);
-    fprintf(stderr, "cpuset-2: %s\n", set2str);
-    fprintf(stderr, "global:   %s\n", setstr);
-    free(setstr);
-    free(set2str);
+  if (!cpuset2.isincluded(global)) {
+    std::cerr << "cpuset-2 is not a subset of the complete cpuset.\n";
+    std::cerr << "cpuset-2: " << cpuset2 << "\n";
+    std::cerr << "global:   " << global << " \n";
     exit(EXIT_FAILURE);
   }
 
-  assert((policy == PAIR) == !hwloc_bitmap_iszero(cpuset2));
-  hwloc_bitmap_or(runset, cpuset1, cpuset2);
+  assert((policy == PAIR) == static_cast<bool>(cpuset2));
+  auto runset = cpuset1 | cpuset2;
 
   threads_t *workers = spawn_workers(topology, runset,
           use_hyperthreads, do_binding);
