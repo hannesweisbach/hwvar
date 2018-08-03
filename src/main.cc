@@ -1,6 +1,10 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <iterator>
+#include <memory>
+#include <sstream>
+#include <vector>
 
 #include <ctype.h>
 #include <getopt.h>
@@ -13,8 +17,9 @@
 #include <time.h>
 #include <cmath>
 
-#include <hwloc.h>
+#include <gsl/gsl>
 
+#include "hwloc"
 #include <platform.h>
 #include <worker.h>
 #include <config.h>
@@ -22,9 +27,6 @@
 
 #include "dgemm.h"
 #include "streambuffer.h"
-
-#include <sstream>
-#include <iterator>
 
 #include "pmcs.h"
 
@@ -169,42 +171,60 @@ static struct hwloc_obj_attr_u::hwloc_cache_attr_s l1_attributes(hwloc_topology_
   return cache->attr->cache;
 }
 
-typedef struct {
-  uint64_t *data;
-  unsigned threads;
-  unsigned repetitions;
-  unsigned counters;
-} benchmark_result_t;
+class benchmark_result {
+  std::unique_ptr<hwloc::cpuset> cpus_;
+  const pmc *pmcs_;
+  unsigned repetitions_;
+  std::vector<uint64_t> data_;
 
-static benchmark_result_t result_alloc(const unsigned threads,
-                                       const unsigned repetitions,
-                                       const unsigned num_counters) {
-  benchmark_result_t result = {.data = NULL,
-                               .threads = threads,
-                               .repetitions = repetitions,
-                               .counters = num_counters - 1};
+public:
+  benchmark_result(const hwloc::cpuset &cpus, const pmc &pmcs,
+                   const unsigned repetitions)
+      : cpus_(std::make_unique<hwloc::cpuset>(cpus)), pmcs_(&pmcs),
+        repetitions_(repetitions),
+        data_(cpus_->size() * pmcs_->size() * repetitions_) {}
 
-  result.data = (uint64_t *)malloc(sizeof(uint64_t) * threads * repetitions *
-                                   num_counters);
+  gsl::span<uint64_t> buffer_for_thread(const int i) {
+    auto span = gsl::span<uint64_t>(data_);
+    return span.subspan(i * repetitions_ * pmcs_->size(),
+                        repetitions_ * pmcs_->size());
+  }
 
-  return result;
-}
+  friend std::ostream &operator<<(std::ostream &os,
+                                  const benchmark_result &result) {
+    for (const auto &pmc : *result.pmcs_) {
+      os << "# " << pmc.name() << '\n';
+      for (const auto cpu : *result.cpus_) {
+        const auto logical = cpu.first;
+        const auto physical = cpu.second;
+        os << std::setw(3) << physical << ' ';
+        for (unsigned rep = 0; rep < result.repetitions_; ++rep) {
+          os << std::setw(10)
+             << result
+                    .data_[logical * result.repetitions_ * result.pmcs_->size() +
+                           result.pmcs_->size() * rep + pmc.offset()]
+             << ' ';
+        }
+        os << '\n';
+      }
+    }
 
-static void result_free(benchmark_result_t result) { free(result.data); }
+    return os;
+  }
+};
 
 #include <benchmark.h>
 
-static benchmark_result_t run_in_parallel(threads_t *workers, benchmark_t *ops,
-                                          const unsigned repetitions,
-                                          const pmc &pmcs);
+static std::unique_ptr<benchmark_result>
+run_in_parallel(threads_t *workers, benchmark_t *ops,
+                const unsigned repetitions, const pmc &pmcs);
 
 static void *null_thread(void *arg_) { return arg_; }
 
 static void synchronize_worker_init(threads_t *threads) {
   benchmark_t null_ops = {"null", NULL, NULL, NULL, NULL, null_thread, NULL};
 
-  benchmark_result_t result = run_in_parallel(threads, &null_ops, 1, pmc{});
-  result_free(result);
+  run_in_parallel(threads, &null_ops, 1, pmc{});
 }
 
 static void *stop_thread(void *arg_) {
@@ -220,9 +240,7 @@ static int stop_single_worker(thread_data_t *thread, step_t *step) {
   step->work->arg = &thread->thread_arg;
   step->work->barrier = &step->barrier;
   step->work->reps = 1;
-  step->work->result = NULL;
   step->work->pmcs = NULL;
-  step->work->num_pmcs = 0;
 
   queue_work(&thread->thread_arg, step->work);
   wait_until_done(&thread->thread_arg);
@@ -262,48 +280,12 @@ static void stop_workers(threads_t *workers) {
   }
 }
 
-static std::ostream &result_print(std::ostream &os,
-                                  benchmark_result_t const &result,
-                                  hwloc_const_cpuset_t &cpuset,
-                                  const pmc &pmcs) {
-  assert(pmcs.size() == result.counters);
-
-#if 0
-  for (auto it = pmcs.cbegin(); it != pmcs.cend(); ++it) {
-    const auto &pmc = *it;
-#else
-  for(const auto & pmc : pmcs) {
-#endif
-    //  for (unsigned counter = 0; counter < result.counters + 1; ++counter) {
-    int cpu = -1;
-#if 0
-    if (counter && (counter - 1 < pmcs.size())) {
-      os << "# " << pmcs[counter - 1] << '\n';
-    }
-#else
-    os << "# " << pmc.name() << '\n';
-#endif
-    for (unsigned thread = 0; thread < result.threads; ++thread) {
-      cpu = hwloc_bitmap_next(cpuset, cpu);
-      os << std::setw(3) << cpu << ' ';
-      for (unsigned rep = 0; rep < result.repetitions; ++rep) {
-        os << std::setw(10)
-           << result.data[thread * result.repetitions * (result.counters + 1) +
-                          (result.counters + 1) * rep + pmc.offset()] << ' ';
-      }
-      os << '\n';
-    }
-  }
-
-  return os;
-}
-
-static benchmark_result_t run_in_parallel(threads_t *workers, benchmark_t *ops,
-                                          const unsigned repetitions,
-                                          const pmc &pmcs) {
+static std::unique_ptr<benchmark_result>
+run_in_parallel(threads_t *workers, benchmark_t *ops,
+                const unsigned repetitions, const pmc &pmcs) {
   const int cpus = hwloc_bitmap_weight(workers->cpuset);
-  benchmark_result_t result =
-      result_alloc((unsigned)cpus, repetitions, pmcs.size());
+  auto result =
+      std::make_unique<benchmark_result>(workers->cpuset, pmcs, repetitions);
   step_t *step = init_step(cpus);
 
   for (int i = 0; i < cpus; ++i) {
@@ -311,10 +293,9 @@ static benchmark_result_t run_in_parallel(threads_t *workers, benchmark_t *ops,
     work->ops = ops;
     work->arg = ops->state;
     work->barrier = &step->barrier;
-    work->result = &result.data[(unsigned)i * repetitions * pmcs.size()];
+    work->results = result->buffer_for_thread(i);
     work->reps = repetitions;
     work->pmcs = &pmcs;
-    work->num_pmcs = pmcs.size();
 
     struct arg *arg = &workers->threads[i].thread_arg;
     queue_work(arg, work);
@@ -332,12 +313,12 @@ static benchmark_result_t run_in_parallel(threads_t *workers, benchmark_t *ops,
   return result;
 }
 
-static benchmark_result_t run_one_by_one(threads_t *workers, benchmark_t *ops,
-                                         const unsigned repetitions,
-                                         const pmc &pmcs) {
+static std::unique_ptr<benchmark_result>
+run_one_by_one(threads_t *workers, benchmark_t *ops, const unsigned repetitions,
+               const pmc &pmcs) {
   const int cpus = hwloc_bitmap_weight(workers->cpuset);
-  benchmark_result_t result =
-      result_alloc((unsigned)cpus, repetitions, pmcs.size());
+  auto result =
+      std::make_unique<benchmark_result>(workers->cpuset, pmcs, repetitions);
   step_t *step = init_step(1);
 
   uint64_t diff = 0;
@@ -346,10 +327,9 @@ static benchmark_result_t run_one_by_one(threads_t *workers, benchmark_t *ops,
     work->ops = ops;
     work->arg = ops->state;
     work->barrier = &step->barrier;
-    work->result = &result.data[(unsigned)i * repetitions * pmcs.size()];
+    work->results = result->buffer_for_thread(i);
     work->reps = repetitions;
     work->pmcs = &pmcs;
-    work->num_pmcs = pmcs.size();
 
     if (i) {
       const unsigned secs = (unsigned)(diff / (1000 * 1000 * 1000UL));
@@ -382,7 +362,7 @@ static benchmark_result_t run_one_by_one(threads_t *workers, benchmark_t *ops,
   return result;
 }
 
-static benchmark_result_t
+static std::unique_ptr<benchmark_result>
 run_two_benchmarks(threads_t *workers, benchmark_t *ops1, benchmark_t *ops2,
                    hwloc_const_cpuset_t set1, hwloc_const_cpuset_t set2,
                    const unsigned repetitions, const pmc &pmcs) {
@@ -393,8 +373,7 @@ run_two_benchmarks(threads_t *workers, benchmark_t *ops1, benchmark_t *ops2,
   assert(hwloc_bitmap_isincluded(cpuset, workers->cpuset));
   const int cpus = hwloc_bitmap_weight(cpuset);
   assert(cpus > 0);
-  benchmark_result_t result =
-      result_alloc((unsigned)cpus, repetitions, pmcs.size());
+  auto result = std::make_unique<benchmark_result>(cpuset, pmcs, repetitions);
   step_t *step = init_step(cpus);
 
   for (int i = 0; i < cpus; ++i) {
@@ -403,10 +382,9 @@ run_two_benchmarks(threads_t *workers, benchmark_t *ops1, benchmark_t *ops2,
     work->ops = hwloc_bitmap_isset(set1, arg->cpu) ? ops1 : ops2;
     work->arg = hwloc_bitmap_isset(set1, arg->cpu) ? ops1->state : ops2->state;
     work->barrier = &step->barrier;
-    work->result = &result.data[(unsigned)i * repetitions * pmcs.size()];
+    work->results = result->buffer_for_thread(i);
     work->reps = repetitions;
     work->pmcs = &pmcs;
-    work->num_pmcs = pmcs.size();
 
     queue_work(arg, work);
   }
@@ -741,40 +719,20 @@ int main(int argc, char *argv[]) {
     }
   }
 
-#if 1
-    pmc pmcs;
-    pmcs.add("ticks");
-    {
-      std::stringstream ss(opt_pmcs);
-      std::string token;
-      while (std::getline(ss, token, ',')) {
-        try {
-          pmcs.add(token);
-        } catch (const std::exception &e) {
-          std::cerr << "Error resolving PMC \"" << token << "\": " << e.what()
-                    << std::endl;
-        }
+  pmc pmcs;
+  {
+    std::stringstream ss(opt_pmcs);
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+      try {
+        pmcs.add(token);
+      } catch (const std::exception &e) {
+        std::cerr << "Error resolving PMC \"" << token << "\": " << e.what()
+                  << std::endl;
       }
     }
-#else
-
-  const unsigned have_pmcs = (opt_pmcs != NULL) && (*opt_pmcs != '\0');
-  const unsigned num_pmcs = have_pmcs + count_chars(opt_pmcs, ',');
-  const char **pmcs = NULL;
-  if (have_pmcs) {
-    pmcs = (const char **)malloc(sizeof(char *) * num_pmcs);
-    if (pmcs == NULL) {
-      fprintf(stderr, "Error allocating memory\n");
-      exit(EXIT_FAILURE);
-    }
-
-    char *arg = strtok(opt_pmcs, ",");
-    for (unsigned i = 0; arg != NULL && i < num_pmcs; ++i) {
-      pmcs[i] = arg;
-      arg = strtok(NULL, ",");
-    }
   }
-#endif
+
   benchmark_config_t config = {size, fill, l1.linesize, 1};
 
   if (tune) {
@@ -859,7 +817,7 @@ int main(int argc, char *argv[]) {
 
     fprintf(stdout, "# %s\n", benchmark->name);
 
-    benchmark_result_t result;
+    std::unique_ptr<benchmark_result> result;
     switch (policy) {
     case PARALLEL:
       result =
@@ -880,7 +838,7 @@ int main(int argc, char *argv[]) {
       exit(EXIT_FAILURE);
     }
 
-    result_print(*output, result, workers->cpuset, pmcs);
+    *output << *result;
   }
 
   stop_workers(workers);

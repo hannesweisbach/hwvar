@@ -43,7 +43,7 @@ public:
     pmcs_.emplace_back(std::move(name), size, pmcs_.size());
   }
 
-  size_t size() const { return pmcs_.size(); }
+  size_t size() const { return pmcs_.size() + 1; }
 
   unsigned bytesize() const {
     unsigned sum = 0;

@@ -4,6 +4,8 @@
 
 #include <hwloc.h>
 
+#include <gsl/gsl>
+
 #include <barrier.h>
 #include <benchmark.h>
 
@@ -17,10 +19,9 @@ typedef struct work {
   pthread_barrier_t *barrier;
   benchmark_t *ops;
   void *arg;
-  uint64_t *result;
   unsigned reps;
-  pmc const * pmcs;
-  unsigned num_pmcs;
+  pmc const *pmcs;
+  gsl::span<uint64_t> results;
 } work_t;
 
 enum state { IDLE, QUEUED, WORKING, DONE };

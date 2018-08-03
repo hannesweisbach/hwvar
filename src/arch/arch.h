@@ -14,7 +14,6 @@ class arch_pmu_base {
 private:
   ptrdiff_t offset_ = 0;
   const ptrdiff_t slice_;
-  std::vector<uint64_t> data_;
   gsl::span<uint64_t> span_;
   ARCH arch_;
 
@@ -22,9 +21,8 @@ private:
   auto &&current_time() { return span_.subspan(offset_, 1)[0]; }
 
 public:
-  arch_pmu_base(const pmc &pmcs, size_t iterations)
-      : slice_(pmcs.size()), data_(iterations * slice_), span_(data_),
-        arch_(pmcs) {}
+  arch_pmu_base(const pmc &pmcs, gsl::span<uint64_t> output)
+      : slice_(pmcs.size()), span_(output), arch_(pmcs) {}
 
   void start() {
     auto pmu_span = current_pmu_span();
@@ -33,9 +31,9 @@ public:
   }
 
   void stop() {
+    current_time() = arch_.timestamp_end() - current_time();
     auto pmu_span = current_pmu_span();
     arch_.stop(pmu_span.begin());
-    current_time() = arch_.timestamp_end() - current_time();
     offset_ += slice_;
   }
 };
