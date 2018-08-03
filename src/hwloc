@@ -37,12 +37,24 @@ class bitmap {
 
 public:
   using iterator = bitmap_iterator;
-using const_iterator = bitmap_iterator;
+  using const_iterator = bitmap_iterator;
+
+  struct list_tag {};
+  struct taskset_tag{};
 
   bitmap() : set_(hwloc_bitmap_alloc()) {}
   bitmap(hwloc_const_bitmap_t bitmap) : set_(hwloc_bitmap_dup(bitmap)) {}
   explicit bitmap(const char *str) : bitmap() {
     const int err = hwloc_bitmap_sscanf(set_, str);
+    if (err) {
+      using namespace std::string_literals;
+      hwloc_bitmap_free(set_);
+      throw std::runtime_error("Error parsing bitmap string "s + str);
+    }
+  }
+
+  explicit bitmap(const char *str, struct list_tag) : bitmap() {
+    const int err = hwloc_bitmap_list_sscanf(set_, str);
     if (err) {
       using namespace std::string_literals;
       hwloc_bitmap_free(set_);
@@ -98,12 +110,15 @@ using const_iterator = bitmap_iterator;
   bool isincluded(const bitmap &r) const {
     return hwloc_bitmap_isincluded(set_, r.set_);
   }
+  bool isequal(const bitmap &r) const {
+    return hwloc_bitmap_isequal(set_, r.set_);
+  }
+  bool isset(const unsigned id) const { return hwloc_bitmap_isset(set_, id); }
 
-  bool intersect(const bitmap &r) const {
+  bool intersects(const bitmap &r) const {
     return hwloc_bitmap_intersects(set_, r.set_);
   }
 
-  bool isset(const unsigned id) const { return hwloc_bitmap_isset(set_, id); }
 
   int weight() const { return hwloc_bitmap_weight(set_); }
   int size() const { return weight(); }
@@ -139,6 +154,8 @@ using const_iterator = bitmap_iterator;
   friend std::ostream &operator<<(std::ostream &os, const bitmap &b) {
     return os << b.to_string();
   }
+
+  [[deprecated]] hwloc_bitmap_t get() { return set_; }
 };
 
 using cpuset = bitmap;
