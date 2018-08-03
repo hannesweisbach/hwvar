@@ -1,0 +1,145 @@
+#pragma once
+
+#include <memory>
+#include <stdexcept>
+#include <utility>
+#include <string>
+#include <vector>
+
+#include <hwloc.h>
+
+namespace hwloc {
+class bitmap {
+  hwloc_bitmap_t set_;
+
+  class bitmap_iterator {
+    const bitmap *b_;
+    std::pair<int, int> pos_;
+
+    friend class bitmap;
+    bitmap_iterator(const bitmap *const b) : b_(b), pos_(0, b_->first()) {}
+
+  public:
+    bitmap_iterator() : b_(nullptr) {}
+    bool operator==(const bitmap_iterator &r) const {
+      return b_ == r.b_ && pos_ == r.pos_;
+    }
+
+    bool operator!=(const bitmap_iterator &r) const { return !(*this == r); }
+    std::pair<int, int> operator*() const { return pos_; }
+
+    bitmap_iterator &operator++() {
+      ++pos_.first;
+      pos_.second = b_->next(pos_.second);
+      return *this;
+    }
+  };
+
+public:
+  using iterator = bitmap_iterator;
+using const_iterator = bitmap_iterator;
+
+  bitmap() : set_(hwloc_bitmap_alloc()) {}
+  bitmap(hwloc_const_bitmap_t bitmap) : set_(hwloc_bitmap_dup(bitmap)) {}
+  explicit bitmap(const char *str) : bitmap() {
+    const int err = hwloc_bitmap_sscanf(set_, str);
+    if (err) {
+      using namespace std::string_literals;
+      hwloc_bitmap_free(set_);
+      throw std::runtime_error("Error parsing bitmap string "s + str);
+    }
+  }
+
+  ~bitmap() { hwloc_bitmap_free(set_); }
+
+  bitmap(const bitmap &r) : set_(hwloc_bitmap_dup(r.set_)) {}
+  bitmap(bitmap &&r) {
+    using namespace std;
+    swap(set_, r.set_);
+  }
+
+  bitmap &operator=(const bitmap &r) {
+    using namespace std;
+    auto tmp = r;
+    swap(*this, tmp);
+    return *this;
+  }
+
+  bitmap &operator=(bitmap &&r) {
+    using namespace std;
+    swap(set_, r.set_);
+    return *this;
+  }
+
+  bitmap &operator&=(const bitmap &r) {
+    hwloc_bitmap_and(set_, set_, r.set_);
+    return *this;
+  }
+
+  bitmap &operator|=(const bitmap &r) {
+    hwloc_bitmap_or(set_, set_, r.set_);
+    return *this;
+  }
+
+  friend bitmap operator&(const bitmap &l, const bitmap &r) {
+    bitmap result;
+    hwloc_bitmap_and(result.set_, l.set_, r.set_);
+    return result;
+  }
+  
+  friend bitmap operator|(const bitmap &l, const bitmap &r) {
+    bitmap result;
+    hwloc_bitmap_or(result.set_, l.set_, r.set_);
+    return result;
+  }
+
+  explicit operator bool() const { return !hwloc_bitmap_iszero(set_); }
+
+  bool isincluded(const bitmap &r) const {
+    return hwloc_bitmap_isincluded(set_, r.set_);
+  }
+
+  bool intersect(const bitmap &r) const {
+    return hwloc_bitmap_intersects(set_, r.set_);
+  }
+
+  bool isset(const unsigned id) const { return hwloc_bitmap_isset(set_, id); }
+
+  int weight() const { return hwloc_bitmap_weight(set_); }
+  int size() const { return weight(); }
+  int first() const { return hwloc_bitmap_first(set_); }
+  int next(const int prev) const { return hwloc_bitmap_next(set_, prev); }
+
+  bitmap &singlify() {
+    hwloc_bitmap_singlify(set_);
+    return *this;
+  }
+
+  bitmap &set(const unsigned id) {
+    hwloc_bitmap_set(set_, id);
+    return *this;
+  }
+
+  std::string to_string() const {
+    const int length = hwloc_bitmap_snprintf(nullptr, 0, set_);
+    std::vector<char> result(length + 1);
+    hwloc_bitmap_snprintf(result.data(), result.size(), set_);
+
+    return std::string(result.begin(), result.end());
+  }
+
+  iterator begin() const { return iterator(this); }
+  iterator end() const { return iterator(); }
+
+  friend void swap(bitmap &r, bitmap &l) {
+    using namespace std;
+    swap(r.set_, l.set_);
+  }
+
+  friend std::ostream &operator<<(std::ostream &os, const bitmap &b) {
+    return os << b.to_string();
+  }
+};
+
+using cpuset = bitmap;
+} // namespace hwloc
