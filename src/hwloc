@@ -131,6 +131,13 @@ public:
   int weight() const { return hwloc_bitmap_weight(set_); }
   int size() const { return weight(); }
   int first() const { return hwloc_bitmap_first(set_); }
+  unsigned first(int) const {
+    const int tmp = hwloc_bitmap_first(set_);
+    if (tmp < 0) {
+      throw std::runtime_error("first(int) failed. No bit set in bitmap.");
+    }
+    return static_cast<unsigned>(tmp);
+  }
   int next(const int prev) const { return hwloc_bitmap_next(set_, prev); }
 
   bitmap &singlify() {
