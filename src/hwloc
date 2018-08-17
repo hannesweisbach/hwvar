@@ -5,10 +5,12 @@
 #include <utility>
 #include <string>
 #include <vector>
+#include <iostream>
 
 #include <hwloc.h>
 
 namespace hwloc {
+
 class bitmap {
   hwloc_bitmap_t set_;
 
@@ -20,20 +22,26 @@ class bitmap {
     bitmap_iterator(const bitmap *const b) : b_(b), pos_(0, b_->first()) {}
 
   public:
-    bitmap_iterator() : b_(nullptr) {}
+    bitmap_iterator() : b_(nullptr), pos_(0, -1) {}
     bool operator==(const bitmap_iterator &r) const {
-      return b_ == r.b_ && pos_ == r.pos_;
+      return (b_ == r.b_ && pos_ == r.pos_) ||
+             (b_ == nullptr && r.pos_.second == -1) ||
+             (r.b_ == nullptr && pos_.second == -1);
     }
 
     bool operator!=(const bitmap_iterator &r) const { return !(*this == r); }
     std::pair<int, int> operator*() const { return pos_; }
 
     bitmap_iterator &operator++() {
-      ++pos_.first;
-      pos_.second = b_->next(pos_.second);
+      if (b_ != nullptr) {
+        ++pos_.first;
+        pos_.second = b_->next(pos_.second);
+      }
       return *this;
     }
   };
+
+  friend class topology;
 
 public:
   using iterator = bitmap_iterator;
