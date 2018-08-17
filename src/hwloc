@@ -1,3 +1,4 @@
+/* vi: set filetype=cpp : */
 #pragma once
 
 #include <memory>
@@ -174,4 +175,84 @@ public:
 };
 
 using cpuset = bitmap;
+
+class topology {
+  hwloc_topology_t topology_ = nullptr;
+
+public:
+  class depth {
+    unsigned depth_;
+    depth(const unsigned depth) : depth_(depth) {}
+    friend class topology;
+  };
+
+  topology() {
+    if (hwloc_topology_init(&topology_)) {
+      throw std::runtime_error("hwloc_topology_init failed\n");
+    }
+  }
+
+  ~topology() { hwloc_topology_destroy(topology_); }
+
+  void load() {
+    if (hwloc_topology_load(topology_)) {
+      throw std::runtime_error("hwloc_topology_load() failed\n");
+    }
+  }
+
+  bool is_thissystem() const { return hwloc_topology_is_thissystem(topology_); }
+
+  cpuset get_topology_cpuset() const {
+    return hwloc_topology_get_topology_cpuset(topology_);
+  }
+
+  depth get_type_or_below_depth(const hwloc_obj_type_t type) {
+    const int depth = hwloc_get_type_or_below_depth(topology_, HWLOC_OBJ_PU);
+    if (depth < 0) {
+      throw std::runtime_error("Error finding type.");
+    }
+
+    return {(unsigned)depth};
+  }
+
+  unsigned get_nbobjs(const depth &d) const {
+    return hwloc_get_nbobjs_by_depth(topology_, d.depth_);
+  }
+
+  hwloc_obj_t get_obj(const hwloc_obj_type_t type, const unsigned n) const {
+    return hwloc_get_obj_by_type(topology_, type, n);
+  }
+
+  cpuset get_cpubind() const {
+    cpuset result;
+    const int ret =
+        hwloc_get_cpubind(topology_, result.set_, HWLOC_CPUBIND_THREAD);
+    if (ret) {
+      throw std::runtime_error("hwloc_get_cpubind() failed.");
+    }
+
+    return result;
+  }
+
+  cpuset get_last_cpu_location(
+      const hwloc_cpubind_flags_t flags = HWLOC_CPUBIND_THREAD) const {
+    cpuset result;
+    const int ret = hwloc_get_last_cpu_location(topology_, result.set_, flags);
+    if (ret) {
+      throw std::runtime_error("hwloc_get_last_cpu_location() failed.");
+    }
+    return result;
+  }
+
+  void set_cpubind(const cpuset set,
+                   const hwloc_cpubind_flags_t flags = HWLOC_CPUBIND_THREAD) {
+    const auto err = hwloc_set_cpubind(topology_, set.set_, flags);
+    if (err) {
+      throw std::runtime_error("hwloc_set_cpubind() failed");
+    }
+  }
+
+  [[deprecated]] hwloc_topology_t get() { return topology_; }
+};
+
 } // namespace hwloc
