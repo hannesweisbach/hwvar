@@ -1,4 +1,7 @@
 #pragma once
+
+#include <thread>
+
 #include <pthread.h>
 #include <stdint.h>
 
@@ -27,7 +30,7 @@ typedef struct work {
 enum state { IDLE, QUEUED, WORKING, DONE };
 
 struct arg {
-  hwloc_topology_t topology;
+  hwloc::topology *topology;
   hwloc::cpuset cpuset;
   pthread_mutex_t lock;
   pthread_cond_t cv;
