@@ -135,13 +135,6 @@ static void bind_thread(hwloc::topology &topology,
   }
 }
 
-static void barrier_wait(pthread_barrier_t *const barrier) {
-  const int err = pthread_barrier_wait(barrier);
-  if (err && err != PTHREAD_BARRIER_SERIAL_THREAD) {
-    perror("pthread_barrier_wait() failed");
-  }
-}
-
 class runner::executor{
   mutable std::mutex queue_lock_;
   mutable std::condition_variable cv_;
@@ -260,8 +253,6 @@ public:
   void run_dirigent() { loop_(); }
 };
 
-/* sync init for all threads */
-/* shut down */
 runner::runner(hwloc::topology *const topology, const hwloc::cpuset &cpuset,
                bool include_hyperthreads, bool do_binding) {
   const hwloc_obj_type_t type =
@@ -311,6 +302,7 @@ runner::runner(hwloc::topology *const topology, const hwloc::cpuset &cpuset,
   }
 
   assert(cpuset_.size() == cpuset.size());
+  /* wait for all threads to initialize */
   {
     benchmark_t null_ops = {
         "null", NULL, NULL, NULL, NULL, [](void *ptr) {
