@@ -5,6 +5,7 @@
 #include <memory>
 #include <sstream>
 #include <vector>
+#include <string>
 
 #include <ctype.h>
 #include <getopt.h>
@@ -72,10 +73,6 @@ static struct hwloc_obj_attr_u::hwloc_cache_attr_s l1_attributes(hwloc_topology_
   return cache->attr->cache;
 }
 
-#include <benchmark.h>
-
-static void *null_thread(void *arg_) { return arg_; }
-
 /**
  * Tune the rounds parameter such that a pre-defined benchmark runtime is
  * achieved.
@@ -116,46 +113,45 @@ static unsigned tune_time(benchmark_t *benchmark, const double target_seconds,
   return ret;
 }
 
-static void tune_benchmarks_time(benchmark_t **benchmarks,
-                                 const unsigned num_benchmarks, char *argv[],
-                                 const unsigned argc, const double time,
+static void tune_benchmarks_time(std::vector<benchmark_t *> benchmarks,
+                                 std::vector<std::string> &argv,
+                                 const double time,
                                  const benchmark_config_t *const config) {
   const unsigned rounds = 10;
-  for (unsigned i = 0; i < num_benchmarks; ++i) {
-    asprintf(&argv[argc + i], "--%s-rounds=%u", benchmarks[i]->name, rounds);
+  const auto offset = argv.size();
+
+  for (const auto &benchmark : benchmarks) {
+    using namespace std::string_literals;
+    argv.push_back("--"s + benchmark->name +
+                   "-rounds=" + std::to_string(rounds));
   }
 
-  init_benchmarks((int)(argc + num_benchmarks), argv, config);
-
-  for (unsigned i = 0; i < num_benchmarks; ++i) {
-    free(argv[argc + i]);
-    asprintf(&argv[argc + i], "--%s-rounds=%u", benchmarks[i]->name,
-             tune_time(benchmarks[i], time, rounds));
+  std::vector<const char *> argv_;
+  for (const auto &arg : argv) {
+    argv_.push_back(arg.c_str());
   }
 
-  fprintf(stderr, "[Time] ");
-  for (unsigned i = 0; i < num_benchmarks; ++i) {
-    fprintf(stderr, "%s ", argv[argc + i]);
+  init_benchmarks(static_cast<int>(argv.size()),
+                  const_cast<char **>(argv_.data()), config);
+
+  argv.resize(offset);
+  for (const auto &benchmark : benchmarks) {
+    using namespace std::string_literals;
+    argv.push_back("--"s + benchmark->name + "-rounds=" +
+                   std::to_string(tune_time(benchmark, time, rounds)));
   }
-  fprintf(stderr, "\n");
+
+  std::cerr << "[Time] ";
+  for (const auto &arg : argv) {
+    std::cerr << arg << ' ';
+  }
+  std::cerr << std::endl;
 }
 
 static int file_exists(const char *name) {
   struct stat tmp;
   int err = stat(name, &tmp);
   return (err == 0) || (errno != ENOENT);
-}
-
-static unsigned count_chars(const char *str, char c) {
-  if (str == NULL)
-    return 0;
-  unsigned int chars = 0;
-  for (int i = 0; str[i] != '\0'; ++i) {
-    if (str[i] == c) {
-      ++chars;
-    }
-  }
-  return chars;
 }
 
 static unsigned si_suffix_to_factor(int suffix) {
@@ -350,32 +346,26 @@ int main(int argc, char *argv[]) {
   }
 #endif
 
-  unsigned num_benchmarks = opt_benchmarks == NULL
-                                ? number_benchmarks()
-                                : count_chars(opt_benchmarks, ',') + 1;
-
-  benchmark_t **benchmarks =
-      (benchmark_t **)malloc(sizeof(benchmark_t *) * num_benchmarks);
-  if (benchmarks == NULL) {
-    fprintf(stderr, "Error allocating memory\n");
-    exit(EXIT_FAILURE);
-  }
+  std::vector<benchmark_t *> benchmarks;
 
   if (opt_benchmarks != NULL) {
+    const unsigned num_benchmarks = number_benchmarks();
     char *arg = strtok(opt_benchmarks, ",");
     unsigned i = 0;
     for (i = 0; arg != NULL && i < num_benchmarks; ++i) {
-      benchmarks[i] = get_benchmark_name(arg);
-      if (benchmarks[i] == NULL) {
+      benchmark_t * benchmark = get_benchmark_name(arg);
+      if (benchmark == NULL) {
         fprintf(stderr, "Benchmark %s unknown. Skipping.\n", arg);
         --i;
+      } else {
+        benchmarks.push_back(benchmark);
       }
       arg = strtok(NULL, ",");
     }
-    num_benchmarks = i;
   } else {
+    const unsigned num_benchmarks = number_benchmarks();
     for (unsigned i = 0; i < num_benchmarks; ++i) {
-      benchmarks[i] = get_benchmark_idx(i);
+      benchmarks.push_back(get_benchmark_idx(i));
     }
   }
 
@@ -396,34 +386,27 @@ int main(int argc, char *argv[]) {
   benchmark_config_t config = {size, fill, l1.linesize, 1};
 
   if (tune) {
-    const unsigned num_args = num_benchmarks + 1;
-    char **myargv = (char **)malloc(sizeof(char *) * num_args);
-    myargv[0] = ""; // the first arg for getopt to skip over.
-    fprintf(stderr, "Tuning rounds parameter:\n");
-    tune_benchmarks_time(benchmarks, num_benchmarks, myargv, 1,
-                         time, &config);
-    for (unsigned i = 1; i < num_args; ++i) {
-      free(myargv[i]);
-    }
-    free(myargv);
+    std::cerr << "Tuning rounds parameter:\n";
+    std::vector<std::string> my_argv(1, "");
+    tune_benchmarks_time(benchmarks, my_argv, time, &config);
     exit(EXIT_SUCCESS);
   }
 
   if (auto_tune) {
     /* alloc space for input argv + *-rounds= parameters */
-    unsigned idx = (unsigned)argc;
-    const unsigned num_args = num_benchmarks + idx;
-    char **myargv = (char **)malloc(sizeof(char *) * num_args);
-    memcpy(myargv, argv, idx * sizeof(char *));
+    std::vector<std::string> my_argv;
+    std::copy_n(argv, argc, std::back_inserter(my_argv));
 
-    tune_benchmarks_time(benchmarks, num_benchmarks, myargv, idx, time,
-                         &config);
+    tune_benchmarks_time(benchmarks, my_argv, time, &config);
     config.verbose = 0;
-    init_benchmarks((int)(idx + num_benchmarks), myargv, &config);
-    for (unsigned i = (unsigned)argc; i < num_args; ++i) {
-      free(myargv[i]);
+
+    std::vector<const char *> argv_;
+    for (const auto &arg : my_argv) {
+      argv_.push_back(arg.c_str());
     }
-    free(myargv);
+
+    init_benchmarks(static_cast<int>(argv_.size()),
+                    const_cast<char **>(argv_.data()), &config);
   } else {
     init_benchmarks(argc, argv, &config);
   }
@@ -459,26 +442,26 @@ int main(int argc, char *argv[]) {
 
   runner b_runner(topology.get(), runset, use_hyperthreads, do_binding);
 
-  for (unsigned i = 0; i < num_benchmarks; ++i) {
-    benchmark_t *benchmark = benchmarks[i];
-
-    fprintf(stdout, "# %s\n", benchmark->name);
+  for (auto benchmark = benchmarks.cbegin(); benchmark != benchmarks.cend();
+       ++benchmark) {
+    std::cout << "# " << (*benchmark)->name << std::endl;
 
     std::unique_ptr<benchmark_result> result;
     switch (policy) {
     case PARALLEL:
       result =
-          b_runner.parallel(benchmark, iterations, pmcs);
+          b_runner.parallel(*benchmark, iterations, pmcs);
       break;
     case ONE_BY_ONE:
       result =
-          b_runner.serial(benchmark, iterations, pmcs);
+          b_runner.serial(*benchmark, iterations, pmcs);
       break;
     case PAIR: {
-      const unsigned next = i + 1 < num_benchmarks ? i + 1 : i;
-      result = b_runner.parallel(benchmarks[i], benchmarks[next], cpuset1,
-                                 cpuset2, iterations, pmcs);
-      i = i + 1;
+      const auto next = std::next(benchmark);
+      result = b_runner.parallel(
+          *benchmark, (next == benchmarks.end()) ? *benchmark : *next, cpuset1,
+          cpuset2, iterations, pmcs);
+      ++benchmark;
     } break;
     case NR_POLICIES:
       exit(EXIT_FAILURE);
