@@ -66,3 +66,27 @@ int pthread_barrierattr_setpshared(pthread_barrierattr_t *attr, int pshared);
 #endif
 
 #endif
+
+#ifdef __cplusplus
+
+#include <memory>
+#include <stdexcept>
+#include <string>
+
+class barrier {
+  mutable std::unique_ptr<pthread_barrier_t> barrier_;
+
+public:
+  barrier(const unsigned count)
+      : barrier_(std::make_unique<pthread_barrier_t>()) {
+    const int err = pthread_barrier_init(barrier_.get(), NULL, count);
+    if (err) {
+      throw std::runtime_error("Error initializing barrier: " +
+                               std::to_string(err));
+    }
+  }
+  ~barrier() { pthread_barrier_destroy(barrier_.get()); }
+  void wait() const { pthread_barrier_wait(barrier_.get()); }
+};
+
+#endif
