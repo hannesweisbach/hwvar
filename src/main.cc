@@ -21,10 +21,10 @@
 
 #include "hwloc"
 #include <platform.h>
-#include <worker.h>
 #include <config.h>
 #include "benchmark.h"
 
+#include "runner.h"
 #include "dgemm.h"
 #include "streambuffer.h"
 
@@ -50,100 +50,6 @@ static uint64_t get_time() {
 #endif
 }
 
-static threads_t *spawn_workers(hwloc_topology_t topology,
-                                const hwloc::cpuset &cpuset,
-                                int include_hyperthreads, int do_binding) {
-  const hwloc_obj_type_t type =
-      (include_hyperthreads) ? HWLOC_OBJ_PU : HWLOC_OBJ_CORE;
-  const int depth = hwloc_get_type_or_below_depth(topology, type);
-  const unsigned num_threads =
-      hwloc_get_nbobjs_by_depth(topology, (unsigned)depth);
-
-  threads_t *workers = (threads_t *)malloc(sizeof(threads_t));
-  if (workers == NULL) {
-    exit(EXIT_FAILURE);
-  }
-
-  std::cerr << "Spawning " << cpuset.size() << " workers: " << cpuset
-            << std::endl;
-
-  workers->threads =
-      (thread_data_t *)malloc(sizeof(thread_data_t) * num_threads);
-  if (workers->threads == NULL) {
-    exit(EXIT_FAILURE);
-  }
-
-  // iterate over all cores and pick the ones in the cpuset
-  hwloc::cpuset allocated;
-  for (unsigned pu = 0, i = 0; pu < num_threads; ++pu) {
-    /* TODO Awesome:
-     * If no object for that type exists, NULL is returned. If there
-     * are several levels with objects of that type, NULL is returned and ther
-     * caller may fallback to hwloc_get_obj_by_depth(). */
-    hwloc_obj_t obj = hwloc_get_obj_by_type(topology, type, pu);
-    if (obj == NULL) {
-      printf("Error getting obj. Implement fallback to "
-             "hwloc_get_obj_by_depth()?\n");
-      exit(EXIT_FAILURE);
-    }
-
-    hwloc::cpuset tmp(obj->cpuset);
-    tmp.singlify();
-    // TODO might this get the same mask for two sets?!
-    if (!tmp.isincluded(cpuset)) {
-      continue;
-    }
-    const int cpunum_check = tmp.first();
-    if (cpunum_check < 0) {
-      fprintf(stderr, "No index is set in the bitmask\n");
-      exit(EXIT_FAILURE);
-    }
-    const unsigned cpunum = (unsigned)cpunum_check;
-
-    thread_data_t *thread = &workers->threads[i];
-    // TODO handle errors.
-    pthread_mutex_init(&thread->thread_arg.lock, NULL);
-    pthread_cond_init(&thread->thread_arg.cv, NULL);
-
-    pthread_mutex_lock(&thread->thread_arg.lock);
-    thread->thread_arg.work = NULL;
-    thread->thread_arg.s = IDLE;
-    thread->thread_arg.run = 1;
-    thread->thread_arg.dirigent = i == 0;
-    thread->thread_arg.thread = i;
-    thread->thread_arg.topology = topology;
-    thread->thread_arg.cpu = cpunum;
-    thread->thread_arg.cpuset = tmp;
-    thread->thread_arg.do_binding = do_binding;
-#if 0
-    fprintf(stderr, "Found L:%u P:%u %s %d %d %d\n", obj->logical_index,
-            obj->os_index, thread->thread_arg.cpuset_string, i, pu,
-            cpunum);
-#endif
-
-    allocated.set(cpunum);
-    pthread_mutex_unlock(&thread->thread_arg.lock);
-
-    if (i > 0) {
-      int err =
-          pthread_create(&thread->thread, NULL, worker, &thread->thread_arg);
-      if (err) {
-        fprintf(stderr, "Error creating thread.\n");
-        // can't cancel threads; just quit.
-        return NULL;
-      }
-    }
-
-    i = i + 1;
-  }
-
-  assert(allocated.size() == cpuset.size());
-
-  workers->cpuset = allocated;
-
-  return workers;
-}
-
 static struct hwloc_obj_attr_u::hwloc_cache_attr_s l1_attributes(hwloc_topology_t topology) {
   const int depth = hwloc_get_type_or_below_depth(topology, HWLOC_OBJ_PU);
   if (depth < 0) {
@@ -166,234 +72,9 @@ static struct hwloc_obj_attr_u::hwloc_cache_attr_s l1_attributes(hwloc_topology_
   return cache->attr->cache;
 }
 
-class benchmark_result {
-  std::unique_ptr<hwloc::cpuset> cpus_;
-  const pmc *pmcs_;
-  unsigned repetitions_;
-  std::vector<uint64_t> data_;
-
-public:
-  benchmark_result(const hwloc::cpuset &cpus, const pmc &pmcs,
-                   const unsigned repetitions)
-      : cpus_(std::make_unique<hwloc::cpuset>(cpus)), pmcs_(&pmcs),
-        repetitions_(repetitions),
-        data_(cpus_->size() * pmcs_->size() * repetitions_) {}
-
-  gsl::span<uint64_t> buffer_for_thread(const int i) {
-    auto span = gsl::span<uint64_t>(data_);
-    return span.subspan(i * repetitions_ * pmcs_->size(),
-                        repetitions_ * pmcs_->size());
-  }
-
-  friend std::ostream &operator<<(std::ostream &os,
-                                  const benchmark_result &result) {
-    for (const auto &pmc : *result.pmcs_) {
-      os << "# " << pmc.name() << '\n';
-      for (const auto cpu : *result.cpus_) {
-        const auto logical = cpu.first;
-        const auto physical = cpu.second;
-        os << std::setw(3) << physical << ' ';
-        for (unsigned rep = 0; rep < result.repetitions_; ++rep) {
-          os << std::setw(10)
-             << result
-                    .data_[logical * result.repetitions_ * result.pmcs_->size() +
-                           result.pmcs_->size() * rep + pmc.offset()]
-             << ' ';
-        }
-        os << '\n';
-      }
-    }
-
-    return os;
-  }
-};
-
 #include <benchmark.h>
 
-static std::unique_ptr<benchmark_result>
-run_in_parallel(threads_t *workers, benchmark_t *ops,
-                const unsigned repetitions, const pmc &pmcs);
-
 static void *null_thread(void *arg_) { return arg_; }
-
-static void synchronize_worker_init(threads_t *threads) {
-  benchmark_t null_ops = {"null", NULL, NULL, NULL, NULL, null_thread, NULL};
-
-  run_in_parallel(threads, &null_ops, 1, pmc{});
-}
-
-static void *stop_thread(void *arg_) {
-  struct arg *arg = (struct arg *)arg_;
-  arg->run = 0;
-  return NULL;
-}
-
-static int stop_single_worker(thread_data_t *thread, step_t *step) {
-  benchmark_t stop_ops = {"stop", NULL, NULL, NULL, NULL, stop_thread, NULL};
-
-  step->work->ops = &stop_ops;
-  step->work->arg = &thread->thread_arg;
-  step->work->barrier = &step->barrier;
-  step->work->reps = 1;
-  step->work->pmcs = NULL;
-
-  queue_work(&thread->thread_arg, step->work);
-  wait_until_done(&thread->thread_arg);
-
-  int err = pthread_join(thread->thread, NULL);
-  if (err) {
-    fprintf(stderr, "Error joining with thread %d\n",
-            thread->thread_arg.thread);
-    return err;
-  }
-
-  pthread_mutex_destroy(&thread->thread_arg.lock);
-  pthread_cond_destroy(&thread->thread_arg.cv);
-  if (err) {
-    fprintf(stderr, "Error destroying queue for thread on CPU %d\n",
-            thread->thread_arg.thread);
-  }
-
-  return err;
-}
-
-static void stop_workers(threads_t *workers) {
-  step_t *step = init_step(1);
-
-  int err = 0;
-  for (int i = 0; i < workers->cpuset.size(); ++i) {
-    if (workers->threads[i].thread_arg.dirigent) { // skip dirigent
-      continue;
-    }
-    err |= stop_single_worker(&workers->threads[i], step);
-  }
-
-  free_step(step);
-
-  if (!err) {
-    // TODO cleanup.
-  }
-}
-
-static std::unique_ptr<benchmark_result>
-run_in_parallel(threads_t *workers, benchmark_t *ops,
-                const unsigned repetitions, const pmc &pmcs) {
-  const int cpus = workers->cpuset.size();
-  auto result =
-      std::make_unique<benchmark_result>(workers->cpuset, pmcs, repetitions);
-  step_t *step = init_step(cpus);
-
-  for (int i = 0; i < cpus; ++i) {
-    work_t *work = &step->work[i];
-    work->ops = ops;
-    work->arg = ops->state;
-    work->barrier = &step->barrier;
-    work->results = result->buffer_for_thread(i);
-    work->reps = repetitions;
-    work->pmcs = &pmcs;
-
-    struct arg *arg = &workers->threads[i].thread_arg;
-    queue_work(arg, work);
-  }
-
-  // run dirigent
-  assert(workers->threads[0].thread_arg.dirigent);
-  worker(&workers->threads[0].thread_arg);
-  for (int i = 0; i < cpus; ++i) {
-    wait_until_done(&workers->threads[i].thread_arg);
-  }
-
-  free_step(step);
-
-  return result;
-}
-
-static std::unique_ptr<benchmark_result>
-run_one_by_one(threads_t *workers, benchmark_t *ops, const unsigned repetitions,
-               const pmc &pmcs) {
-  const int cpus = workers->cpuset.size();
-  auto result =
-      std::make_unique<benchmark_result>(workers->cpuset, pmcs, repetitions);
-  step_t *step = init_step(1);
-
-  uint64_t diff = 0;
-  for (int i = 0; i < cpus; ++i) {
-    work_t *work = &step->work[0];
-    work->ops = ops;
-    work->arg = ops->state;
-    work->barrier = &step->barrier;
-    work->results = result->buffer_for_thread(i);
-    work->reps = repetitions;
-    work->pmcs = &pmcs;
-
-    if (i) {
-      const unsigned secs = (unsigned)(diff / (1000 * 1000 * 1000UL));
-      const unsigned sec = secs % 60UL;
-      const unsigned mins = (secs - sec) / 60;
-      const unsigned min = mins % 60UL;
-      const unsigned hours = (mins - min) / 60;
-      fprintf(stderr,
-              "Running %u of %i. Last took %02u:%02u:%02u (%us)\r",
-              i + 1, cpus, hours, min, sec, secs);
-      fflush(stderr);
-    } else {
-      fprintf(stderr, "Running %u of %i\r", i + 1, cpus);
-      fflush(stderr);
-    }
-
-    const uint64_t begin = get_time();
-    struct arg *arg = &workers->threads[i].thread_arg;
-    queue_work(arg, work);
-    if (arg->dirigent) { // run dirigent
-      assert(i == 0);
-      worker(arg);
-    }
-    wait_until_done(arg);
-    diff = get_time() - begin;
-  }
-
-  free_step(step);
-
-  return result;
-}
-
-static std::unique_ptr<benchmark_result>
-run_two_benchmarks(threads_t *workers, benchmark_t *ops1, benchmark_t *ops2,
-                   const hwloc::cpuset &set1, const hwloc::cpuset &set2,
-                   const unsigned repetitions, const pmc &pmcs) {
-  assert(!set1.intersects(set2));
-  hwloc::bitmap cpuset = set1 | set2;
-  cpuset &= workers->cpuset;
-  assert(cpuset.isincluded(workers->cpuset));
-  const int cpus = cpuset.size();
-  assert(cpus > 0);
-  auto result = std::make_unique<benchmark_result>(cpuset, pmcs, repetitions);
-  step_t *step = init_step(cpus);
-
-  for (int i = 0; i < cpus; ++i) {
-    struct arg *arg = &workers->threads[i].thread_arg;
-    work_t *work = &step->work[i];
-    work->ops = set1.isset(arg->cpu) ? ops1 : ops2;
-    work->arg = set1.isset(arg->cpu) ? ops1->state : ops2->state;
-    work->barrier = &step->barrier;
-    work->results = result->buffer_for_thread(i);
-    work->reps = repetitions;
-    work->pmcs = &pmcs;
-
-    queue_work(arg, work);
-  }
-
-  // run dirigent
-  assert(workers->threads[0].thread_arg.dirigent);
-  worker(&workers->threads[0].thread_arg);
-  for (int i = 1; i < cpus; ++i) {
-    wait_until_done(&workers->threads[i].thread_arg);
-  }
-
-  free_step(step);
-
-  return result;
-}
 
 /**
  * Tune the rounds parameter such that a pre-defined benchmark runtime is
@@ -512,17 +193,10 @@ double parse_double(const char *optarg, const char *name, int positive) {
 }
 
 int main(int argc, char *argv[]) {
-  hwloc_topology_t topology = NULL;
-  if (hwloc_topology_init(&topology)) {
-    printf("hwloc_topology_init failed\n");
-    exit(EXIT_FAILURE);
-  }
-  if (hwloc_topology_load(topology)) {
-    printf("hwloc_topology_load() failed\n");
-    exit(EXIT_FAILURE);
-  }
+  std::unique_ptr<hwloc::topology> topology = std::make_unique<hwloc::topology>();
+  topology->load();
 
-  struct hwloc_obj_attr_u::hwloc_cache_attr_s l1 = l1_attributes(topology);
+  struct hwloc_obj_attr_u::hwloc_cache_attr_s l1 = l1_attributes(topology->get());
 
   enum policy { PARALLEL, ONE_BY_ONE, PAIR, NR_POLICIES };
 
@@ -644,7 +318,7 @@ int main(int argc, char *argv[]) {
   }
 
   {
-    const int thissystem = hwloc_topology_is_thissystem(topology);
+    const bool thissystem = topology->is_thissystem();
     fprintf(stderr, "Topology is from this system: %s",
             thissystem ? "yes" : "no");
     if (!thissystem && do_binding) {
@@ -706,7 +380,7 @@ int main(int argc, char *argv[]) {
   }
 
   pmc pmcs;
-  {
+  if (opt_pmcs != nullptr) {
     std::stringstream ss(opt_pmcs);
     std::string token;
     while (std::getline(ss, token, ',')) {
@@ -759,7 +433,7 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  const hwloc::bitmap global = hwloc_topology_get_topology_cpuset(topology);
+  const hwloc::bitmap global = topology->get_topology_cpuset();
 
   /* default is the whole machine */
   if (!cpuset1) {
@@ -783,10 +457,7 @@ int main(int argc, char *argv[]) {
   assert((policy == PAIR) == static_cast<bool>(cpuset2));
   auto runset = cpuset1 | cpuset2;
 
-  threads_t *workers = spawn_workers(topology, runset,
-          use_hyperthreads, do_binding);
-
-  synchronize_worker_init(workers);
+  runner b_runner(topology.get(), runset, use_hyperthreads, do_binding);
 
   for (unsigned i = 0; i < num_benchmarks; ++i) {
     benchmark_t *benchmark = benchmarks[i];
@@ -797,17 +468,16 @@ int main(int argc, char *argv[]) {
     switch (policy) {
     case PARALLEL:
       result =
-          run_in_parallel(workers, benchmark, iterations, pmcs);
+          b_runner.parallel(benchmark, iterations, pmcs);
       break;
     case ONE_BY_ONE:
       result =
-          run_one_by_one(workers, benchmark, iterations, pmcs);
+          b_runner.serial(benchmark, iterations, pmcs);
       break;
     case PAIR: {
       const unsigned next = i + 1 < num_benchmarks ? i + 1 : i;
-      result =
-          run_two_benchmarks(workers, benchmarks[i], benchmarks[next], cpuset1,
-                             cpuset2, iterations, pmcs);
+      result = b_runner.parallel(benchmarks[i], benchmarks[next], cpuset1,
+                                 cpuset2, iterations, pmcs);
       i = i + 1;
     } break;
     case NR_POLICIES:
@@ -816,6 +486,4 @@ int main(int argc, char *argv[]) {
 
     *output << *result;
   }
-
-  stop_workers(workers);
 }

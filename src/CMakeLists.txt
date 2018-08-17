@@ -1,5 +1,5 @@
 add_subdirectory(benchmarks)
-add_executable(hwperfvar main.cc worker.cc barrier.c streambuffer.cc)
+add_executable(hwperfvar main.cc runner.cc barrier.c streambuffer.cc)
 set_source_files_properties(main.c PROPERTIES COMPILE_DEFINITIONS _GNU_SOURCE) # for asprintf
 set_source_files_properties(worker.c PROPERTIES COMPILE_DEFINITIONS _GNU_SOURCE) # for glibc-sched.h
 target_link_libraries(hwperfvar benchmark ${HWLOC_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
