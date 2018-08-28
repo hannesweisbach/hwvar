@@ -7,13 +7,12 @@
 #include <thread>
 #include <future>
 
-#include <gsl/gsl>
+#include <upca/upca.h>
 
 #include <config.h>
 
 #include "hwloc"
 #include "runner.h"
-#include <arch.h>
 #include <barrier.h>
 #include <benchmark.h>
 #include <mckernel.h>
@@ -153,7 +152,7 @@ class runner::executor{
     void *benchmark_arg =
         (ops->init_arg) ? ops->init_arg(ops->state) : ops->state;
 
-    pmu pmu(pmcs, results);
+    auto pmu = pmcs.configure(results);
 
     barrier.wait();
 

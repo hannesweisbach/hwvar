@@ -18,6 +18,7 @@
 #include <time.h>
 #include <cmath>
 
+#include <upca/upca.h>
 #include <gsl/gsl>
 
 #include "hwloc"

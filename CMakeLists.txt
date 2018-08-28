@@ -59,28 +59,7 @@ else()
   check_function_exists(clock_gettime HAVE_CLOCK_GETTIME)
 endif()
 
-# They're found for BlueGene, but are not implemented.
-if(${CMAKE_SYSTEM_NAME} MATCHES "BlueGene")
-  set(HAVE_CLOCK_GETTIME OFF)
-  set(HAVE_SCHED_GETCPU OFF)
-endif()
-
 include(FindPackageHandleStandardArgs)
-
-find_path(GSL_INCDIR
-  NAMES gsl/gsl
-  PATHS ${CMAKE_CURRENT_SOURCE_DIR}/src/3rd/gsl/include
-  NO_DEFAULT_PATH)
-find_package_handle_standard_args(GSL DEFAULT_MSG GSL_INCDIR)
-
-find_path(JEVENTS_INCDIR
-  NAMES jevents.h
-  HINTS ${JEVENTS_DIR}
-  PATH_SUFFIXES "include" "include/jevents")
-find_library(JEVENTS_LIBRARIES jevents
-  HINTS ${JEVENTS_DIR}
-  PATH_SUFFIXES lib lib32 lib64)
-find_package_handle_standard_args(JEVENTS DEFAULT_MSG JEVENTS_LIBRARIES JEVENTS_INCDIR)
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "BlueGene")
   # They're found for BlueGene, but are not implemented.
@@ -101,7 +80,7 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "BlueGene")
 endif()
 
 
-include_directories(include src/arch ${CMAKE_CURRENT_BINARY_DIR} ${HWLOC_INCLUDE_DIRS} ${GSL_INCDIR})
+include_directories(include ${CMAKE_CURRENT_BINARY_DIR} ${HWLOC_INCLUDE_DIRS})
 
 add_subdirectory(src)
 
