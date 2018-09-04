@@ -44,12 +44,18 @@ class bitmap {
 
   friend class topology;
 
+  struct bitmap_scanf_tag {};
+
 public:
   using iterator = bitmap_iterator;
   using const_iterator = bitmap_iterator;
 
-  struct list_tag {};
-  struct taskset_tag{};
+  struct list_tag : bitmap_scanf_tag {
+    static constexpr auto scanf = hwloc_bitmap_list_sscanf;
+  };
+  struct taskset_tag : bitmap_scanf_tag {
+    static constexpr auto scanf = hwloc_bitmap_taskset_sscanf;
+  };
 
   bitmap() : set_(hwloc_bitmap_alloc()) {}
   bitmap(hwloc_const_bitmap_t bitmap) : set_(hwloc_bitmap_dup(bitmap)) {}
@@ -62,8 +68,10 @@ public:
     }
   }
 
-  explicit bitmap(const char *str, struct list_tag) : bitmap() {
-    const int err = hwloc_bitmap_list_sscanf(set_, str);
+  template <typename T> bitmap(const char *str, T) : bitmap() {
+    static_assert(std::is_base_of<bitmap_scanf_tag, T>::value,
+                  "Only taskset_tag or list_tag can be used here.");
+    const int err = T::scanf(set_, str);
     if (err) {
       using namespace std::string_literals;
       hwloc_bitmap_free(set_);
