@@ -30,6 +30,21 @@ gsl::span<uint64_t> benchmark_result::buffer_for_thread(const int i) {
 }
 
 std::ostream &operator<<(std::ostream &os, const benchmark_result &result) {
+  /* timestamp is captured implicitly */
+  os << "# timestamp\n";
+  for (const auto cpu : *result.cpus_) {
+    const auto logical = cpu.first;
+    const auto physical = cpu.second;
+    os << std::setw(3) << physical << ' ';
+    for (unsigned rep = 0; rep < result.repetitions_; ++rep) {
+      os << std::setw(10)
+         << result.data_[logical * result.repetitions_ * result.pmcs_->size() +
+                         result.pmcs_->size() * rep]
+         << ' ';
+    }
+    os << '\n';
+  }
+
   for (const auto &pmc : *result.pmcs_) {
     os << "# " << pmc.name() << '\n';
     for (const auto cpu : *result.cpus_) {
@@ -38,9 +53,9 @@ std::ostream &operator<<(std::ostream &os, const benchmark_result &result) {
       os << std::setw(3) << physical << ' ';
       for (unsigned rep = 0; rep < result.repetitions_; ++rep) {
         os << std::setw(10)
-           << result
-                  .data_[logical * result.repetitions_ * result.pmcs_->size() +
-                         result.pmcs_->size() * rep + pmc.offset()]
+           << result.data_[logical * result.repetitions_ *
+                               result.pmcs_->size() +
+                           result.pmcs_->size() * rep + (1+pmc.offset())]
            << ' ';
       }
       os << '\n';
