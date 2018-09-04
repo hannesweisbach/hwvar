@@ -241,10 +241,10 @@ int main(int argc, char *argv[]) {
     errno = 0;
     switch (c) {
     case 1:
-      cpuset1 = hwloc::bitmap(optarg, hwloc::bitmap::list_tag{});
+      cpuset1 = hwloc::bitmap(optarg, hwloc::bitmap::taskset_tag{});
       break;
     case 2:
-      cpuset2 = hwloc::bitmap(optarg, hwloc::bitmap::list_tag{});
+      cpuset2 = hwloc::bitmap(optarg, hwloc::bitmap::taskset_tag{});
       break;
     case 'p':
       if (strcmp(optarg, "parallel") == 0) {
