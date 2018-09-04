@@ -152,7 +152,9 @@ class runner::executor{
     void *benchmark_arg =
         (ops->init_arg) ? ops->init_arg(ops->state) : ops->state;
 
-    auto pmu = pmcs.configure(results);
+    auto pmu = pmcs.configure();
+    auto offset = gsl::span<uint64_t>::index_type{0};
+    const auto size = pmcs.size();
 
     barrier.wait();
 
@@ -162,9 +164,13 @@ class runner::executor{
         ops->reset_arg(benchmark_arg);
       }
 
-      pmu.start();
+      auto buf = results.subspan(offset, size);
+
+      pmu.start(buf);
       ops->call(benchmark_arg);
-      pmu.stop();
+      const auto written = pmu.stop(buf);
+
+      offset += written;
     }
 
     barrier.wait();
