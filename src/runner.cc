@@ -345,15 +345,15 @@ std::unique_ptr<benchmark_result> runner::serial(benchmark_t *ops, const unsigne
     const auto index = cpu.first;
     const auto &executor = threads_.at(index);
 
-    std::cerr << "Running " << index + 1 << " of " << cpuset_.size() << '.';
+    std::cerr << "\rRunning " << index + 1 << " of " << cpuset_.size() << '.';
     if (index) {
       const auto h = duration_cast<hours>(diff);
       const auto m = duration_cast<minutes>(diff - h);
       const auto s = duration_cast<seconds>(diff - h - m);
       const auto us = diff - h - m - s;
-      std::cerr << "Last took ";
+      std::cerr << " Last took ";
       std::cerr << h.count() << ':' << m.count() << ':' << s.count();
-      std::cerr << " (" << duration_cast<seconds>(diff).count() << ")\r";
+      std::cerr << " (" << duration_cast<seconds>(diff).count() << ")";
     }
     std::cerr << std::flush;
 
@@ -367,6 +367,8 @@ std::unique_ptr<benchmark_result> runner::serial(benchmark_t *ops, const unsigne
     future.get();
     diff = duration_cast<microseconds>(high_resolution_clock::now() - start);
   }
+
+  std::cerr << std::endl;
 
   return result;
 }
