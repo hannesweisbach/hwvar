@@ -222,16 +222,15 @@ class runner::executor{
   }
 
 public:
-  executor(hwloc::topology *topology, const unsigned thread_num,
-           const unsigned cpunum, const hwloc::cpuset cpuset,
+  executor(hwloc::topology *topology, hwloc::cpuset cpuset,
            const bool dirigent = false, const bool do_binding = true)
-      : dirigent_(dirigent), loop_([=]() mutable {
+      : dirigent_(dirigent), loop_([=, cpuset = std::move(cpuset)]() mutable {
           thread_fn(*topology, cpuset, dirigent, do_binding);
         }) {
     if (!dirigent) {
       thread_ = std::thread(loop_);
     }
-  };
+  }
 
   ~executor() {
     if (!dirigent_) {
@@ -309,7 +308,8 @@ runner::runner(hwloc::topology *const topology, const hwloc::cpuset &cpuset,
     const unsigned cpunum = static_cast<unsigned>(cpunum_check);
 
     const bool dirigent = (i == 0);
-    threads_.emplace_back(std::make_unique<executor>(topology, i, cpunum, tmp, dirigent, do_binding));
+    threads_.emplace_back(std::make_unique<executor>(topology, std::move(tmp),
+                                                     dirigent, do_binding));
 
 #if 0
     fprintf(stderr, "Found L:%u P:%u %s %d %d %d\n", obj->logical_index,
