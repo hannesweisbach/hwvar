@@ -182,9 +182,9 @@ class runner::executor{
 
       auto buf = results.subspan(offset, size);
 
-      pmu.start(buf);
+      pmu->start(buf);
       ops->call(benchmark_arg);
-      const auto written = pmu.stop(buf);
+      const auto written = pmu->stop(buf);
 
       offset += written;
     }
