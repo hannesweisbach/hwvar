@@ -30,8 +30,6 @@
 #include "dgemm.h"
 #include "streambuffer.h"
 
-#include "pmcs.h"
-
 static uint64_t get_time() {
 #ifdef HAVE_CLOCK_GETTIME
   struct timespec ts;

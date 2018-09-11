@@ -7,8 +7,9 @@
 #include <gsl/gsl>
 
 #include "hwloc"
-#include "pmcs.h"
 #include <benchmark.h>
+
+using pmc = upca::resolver<pmu>;
 
 class benchmark_result {
   std::unique_ptr<hwloc::cpuset> cpus_;
