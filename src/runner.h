@@ -19,7 +19,7 @@ class benchmark_result {
 public:
   benchmark_result(const hwloc::cpuset &cpus, const pmc &pmcs,
                    const unsigned repetitions);
-  gsl::span<uint64_t> buffer_for_thread(const int i);
+  gsl::span<uint64_t> buffer_for_thread(const unsigned i);
 
   friend std::ostream &operator<<(std::ostream &os,
                                   const benchmark_result &result);

@@ -23,16 +23,17 @@ benchmark_result::benchmark_result(const hwloc::cpuset &cpus, const pmc &pmcs,
       repetitions_(repetitions),
       data_(cpus_->size() * pmcs_->size() * repetitions_) {}
 
-gsl::span<uint64_t> benchmark_result::buffer_for_thread(const int i) {
+gsl::span<uint64_t> benchmark_result::buffer_for_thread(const unsigned i) {
+  using index_type = gsl::span<uint64_t>::index_type;
   auto span = gsl::span<uint64_t>(data_);
-  return span.subspan(i * repetitions_ * pmcs_->size(),
-                      repetitions_ * pmcs_->size());
+  return span.subspan(gsl::narrow<index_type>(i * repetitions_ * pmcs_->size()),
+                      gsl::narrow<index_type>(repetitions_ * pmcs_->size()));
 }
 
 std::ostream &operator<<(std::ostream &os, const benchmark_result &result) {
   /* timestamp is captured implicitly */
   os << "# timestamp\n";
-  for (const auto cpu : *result.cpus_) {
+  for (const auto &cpu : *result.cpus_) {
     const auto logical = cpu.first;
     const auto physical = cpu.second;
     os << std::setw(3) << physical << ' ';
@@ -47,7 +48,7 @@ std::ostream &operator<<(std::ostream &os, const benchmark_result &result) {
 
   for (const auto &pmc : *result.pmcs_) {
     os << "# " << pmc.name() << '\n';
-    for (const auto cpu : *result.cpus_) {
+    for (const auto &cpu : *result.cpus_) {
       const auto logical = cpu.first;
       const auto physical = cpu.second;
       os << std::setw(3) << physical << ' ';
@@ -76,20 +77,20 @@ static hwloc::cpuset current_cpuset_getaffinity() {
 
   for (int cpu = 0; cpu < CPU_SETSIZE; ++cpu) {
     if (CPU_ISSET(cpu, &cpuset)) {
-      ret.set((unsigned)cpu);
+      ret.set(static_cast<unsigned>(cpu));
     }
   }
 
   return ret;
 }
 
-static unsigned current_cpu_getaffinity() {
+static int current_cpu_getaffinity() {
   const int cpu = sched_getcpu();
   if (cpu < 0) {
     perror("sched_getcpu() failed");
   }
 
-  return (unsigned)cpu;
+  return cpu;
 }
 #endif
 
@@ -120,7 +121,7 @@ static void bind_thread(hwloc::topology &topology,
 
 #ifdef HAVE_SCHED_H
     hwloc::bitmap sched_cpuset = current_cpuset_getaffinity();
-    const unsigned sched_cpu = current_cpu_getaffinity();
+    const int sched_cpu = current_cpu_getaffinity();
 #endif
 
     const bool equal = cpuset.isequal(hwloc_cpuset)
@@ -169,7 +170,7 @@ class runner::executor{
 
     auto pmu = pmcs.configure();
     auto offset = gsl::span<uint64_t>::index_type{0};
-    const auto size = pmcs.size();
+    const auto size = gsl::narrow<gsl::span<uint64_t>::index_type>(pmcs.size());
 
     barrier.wait();
 
@@ -305,7 +306,7 @@ runner::runner(hwloc::topology *const topology, const hwloc::cpuset &cpuset,
     if (cpunum_check < 0) {
       throw std::runtime_error("No index is set in the bitmask\n");
     }
-    const unsigned cpunum = (unsigned)cpunum_check;
+    const unsigned cpunum = static_cast<unsigned>(cpunum_check);
 
     const bool dirigent = (i == 0);
     threads_.emplace_back(std::make_unique<executor>(topology, i, cpunum, tmp, dirigent, do_binding));

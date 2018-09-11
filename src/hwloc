@@ -17,7 +17,7 @@ class bitmap {
 
   class bitmap_iterator {
     const bitmap *b_;
-    std::pair<int, int> pos_;
+    std::pair<unsigned, int> pos_;
 
     friend class bitmap;
     bitmap_iterator(const bitmap *const b) : b_(b), pos_(0, b_->first()) {}
@@ -31,7 +31,7 @@ class bitmap {
     }
 
     bool operator!=(const bitmap_iterator &r) const { return !(*this == r); }
-    std::pair<int, int> operator*() const { return pos_; }
+    const std::pair<unsigned, int> &operator*() const { return pos_; }
 
     bitmap_iterator &operator++() {
       if (b_ != nullptr) {
