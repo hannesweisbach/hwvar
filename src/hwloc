@@ -224,12 +224,12 @@ public:
   }
 
   depth get_type_or_below_depth(const hwloc_obj_type_t type) {
-    const int depth = hwloc_get_type_or_below_depth(topology_, HWLOC_OBJ_PU);
+    const int depth = hwloc_get_type_or_below_depth(topology_, type);
     if (depth < 0) {
       throw std::runtime_error("Error finding type.");
     }
 
-    return {(unsigned)depth};
+    return {static_cast<unsigned>(depth)};
   }
 
   unsigned get_nbobjs(const depth &d) const {
