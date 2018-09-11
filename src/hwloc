@@ -138,7 +138,13 @@ public:
 
 
   int weight() const { return hwloc_bitmap_weight(set_); }
-  int size() const { return weight(); }
+  unsigned size() const {
+    const auto sz = weight();
+    if (sz < 0) {
+      throw std::runtime_error("Error getting size of bitmap");
+    }
+    return static_cast<unsigned>(sz);
+  }
   int first() const { return hwloc_bitmap_first(set_); }
   unsigned first(int) const {
     const int tmp = hwloc_bitmap_first(set_);
@@ -161,7 +167,10 @@ public:
 
   std::string to_string() const {
     const int length = hwloc_bitmap_snprintf(nullptr, 0, set_);
-    std::vector<char> result(length + 1);
+    if (length < 0) {
+      throw std::runtime_error("Error printing bitmap string");
+    }
+    std::vector<char> result(static_cast<unsigned>(length + 1));
     hwloc_bitmap_snprintf(result.data(), result.size(), set_);
 
     return std::string(result.begin(), result.end());
