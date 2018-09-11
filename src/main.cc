@@ -38,15 +38,17 @@ static uint64_t get_time() {
     exit(EXIT_FAILURE);
   }
 
-  return (uint64_t)ts.tv_sec * 1000 * 1000 * 1000 + (uint64_t)ts.tv_nsec;
+  return static_cast<uint64_t>(ts.tv_sec) * 1000 * 1000 * 1000 +
+         static_cast<uint64_t>(ts.tv_nsec);
 #else
   struct timeval tv;
-  if (gettimeofday(&tv, NULL)) {
+  if (gettimeofday(&tv, nullptr)) {
     perror("gettimeofday() failed");
     exit(EXIT_FAILURE);
   }
 
-  return (uint64_t)tv.tv_sec * 1000 * 1000 * 1000 + (uint64_t)tv.tv_usec * 1000;
+  return static_cast<uint64_t>(tv.tv_sec) * 1000 * 1000 * 1000 +
+         static_cast<uint64_t>(tv.tv_usec) * 1000;
 #endif
 }
 
@@ -56,10 +58,11 @@ static struct hwloc_obj_attr_u::hwloc_cache_attr_s l1_attributes(hwloc_topology_
     fprintf(stderr, "Error finding PU\n");
     exit(EXIT_FAILURE);
   }
-  hwloc_obj_t obj = hwloc_get_obj_by_depth(topology, (unsigned)depth, 0);
+  hwloc_obj_t obj =
+      hwloc_get_obj_by_depth(topology, static_cast<unsigned>(depth), 0);
   /* Discover cache line size */
   hwloc_obj_t cache = hwloc_get_cache_covering_cpuset(topology, obj->cpuset);
-  assert(cache != NULL);
+  assert(cache != nullptr);
 #if HWLOC_API_VERSION >= 0x00020001
   assert(cache->type == HWLOC_OBJ_L1CACHE);
 #else
@@ -85,7 +88,7 @@ static struct hwloc_obj_attr_u::hwloc_cache_attr_s l1_attributes(hwloc_topology_
 static unsigned tune_time(benchmark_t *benchmark, const double target_seconds,
                           const unsigned init_rounds) {
   void *benchmark_arg =
-      (benchmark->init_arg) ? benchmark->init_arg(benchmark->state) : NULL;
+      (benchmark->init_arg) ? benchmark->init_arg(benchmark->state) : nullptr;
   const uint64_t start = get_time();
   unsigned rep;
   for (rep = 0; get_time() < start + 1000 * 1000 * 1000UL; ++rep) {
@@ -100,7 +103,7 @@ static unsigned tune_time(benchmark_t *benchmark, const double target_seconds,
   const double rounds = (target_seconds * 1e9 * rep * init_rounds) / duration;
   const double rounds_i = nearbyint(rounds);
   assert(rounds <= UINT_MAX);
-  unsigned ret = (unsigned)rounds_i;
+  unsigned ret = static_cast<unsigned>(rounds_i);
   if (ret < 1) {
     ret = 1;
   }
@@ -169,12 +172,12 @@ static unsigned si_suffix_to_factor(int suffix) {
   }
 }
 
-double parse_double(const char *optarg, const char *name, int positive) {
+static double parse_double(const char *arg, const char *name, int positive) {
   errno = 0;
-  char *suffix = NULL;
-  const double value = strtod(optarg, &suffix);
+  char *suffix = nullptr;
+  const double value = strtod(arg, &suffix);
   if (errno == ERANGE || std::isnan(value) || std::isinf(value)) {
-    fprintf(stderr, "Could not parse --%s argument '%s': %s\n", name, optarg,
+    fprintf(stderr, "Could not parse --%s argument '%s': %s\n", name, arg,
             strerror(errno));
     exit(EXIT_FAILURE);
   }
@@ -196,8 +199,8 @@ int main(int argc, char *argv[]) {
   enum policy { PARALLEL, ONE_BY_ONE, PAIR, NR_POLICIES };
 
   enum policy policy = ONE_BY_ONE;
-  char *opt_benchmarks = NULL;
-  char *opt_pmcs = NULL;
+  char *opt_benchmarks = nullptr;
+  char *opt_pmcs = nullptr;
   unsigned iterations = 13;
   uint64_t size = l1.size;
   double fill = 0.9;
@@ -213,27 +216,27 @@ int main(int argc, char *argv[]) {
   hwloc::cpuset cpuset2;
 
   static struct option options[] = {
-      {"policy", required_argument, NULL, 'p'},
-      {"benchmarks", required_argument, NULL, 'b'},
-      {"iterations", required_argument, NULL, 'i'},
-      {"list-benchmarks", no_argument, NULL, 'l'},
-      {"output", required_argument, NULL, 'o'},
-      {"cpuset-1", required_argument, NULL, 1},
-      {"cpuset-2", required_argument, NULL, 2},
-      {"size", required_argument, NULL, 's'},
-      {"fill", required_argument, NULL, 'f'},
-      {"time", required_argument, NULL, 't'},
+      {"policy", required_argument, nullptr, 'p'},
+      {"benchmarks", required_argument, nullptr, 'b'},
+      {"iterations", required_argument, nullptr, 'i'},
+      {"list-benchmarks", no_argument, nullptr, 'l'},
+      {"output", required_argument, nullptr, 'o'},
+      {"cpuset-1", required_argument, nullptr, 1},
+      {"cpuset-2", required_argument, nullptr, 2},
+      {"size", required_argument, nullptr, 's'},
+      {"fill", required_argument, nullptr, 'f'},
+      {"time", required_argument, nullptr, 't'},
       {"tune", no_argument, &tune, 1},
       {"auto", no_argument, &auto_tune, 1},
       {"no-ht", no_argument, &use_hyperthreads, 0},
       {"disable-binding", no_argument, &do_binding, 0},
-      {"pmcs", required_argument, NULL, 'm'},
-      {NULL, 0, NULL, 0}};
+      {"pmcs", required_argument, nullptr, 'm'},
+      {nullptr, 0, nullptr, 0}};
 
   opterr = 0;
 
   while (1) {
-    int c = getopt_long(argc, argv, "p:b:i:lo:s:t:", options, NULL);
+    int c = getopt_long(argc, argv, "p:b:i:lo:s:t:", options, nullptr);
     if (c == -1)
       break;
     errno = 0;
@@ -262,12 +265,12 @@ int main(int argc, char *argv[]) {
       break;
     case 'i': {
       errno = 0;
-      unsigned long tmp = strtoul(optarg, NULL, 0);
+      unsigned long tmp = strtoul(optarg, nullptr, 0);
       if (errno == EINVAL || errno == ERANGE || tmp > UINT_MAX) {
         fprintf(stderr, "Could not parse --iterations argument '%s': %s\n",
                 optarg, strerror(errno));
       }
-      iterations = (unsigned)tmp;
+      iterations = static_cast<unsigned>(tmp);
     } break;
     case 'l':
       list_benchmarks();
@@ -288,14 +291,14 @@ int main(int argc, char *argv[]) {
       break;
     case 's': {
       errno = 0;
-      char *suffix = NULL;
+      char *suffix = nullptr;
       unsigned long tmp = strtoul(optarg, &suffix, 0);
       if (errno == EINVAL || errno == ERANGE) {
         fprintf(stderr, "Could not parse --iterations argument '%s': %s\n",
                 optarg, strerror(errno));
       }
       size = tmp;
-      if (suffix != NULL) {
+      if (suffix != nullptr) {
         size *= si_suffix_to_factor(*suffix);
       }
     } break;
@@ -347,19 +350,19 @@ int main(int argc, char *argv[]) {
 
   std::vector<benchmark_t *> benchmarks;
 
-  if (opt_benchmarks != NULL) {
+  if (opt_benchmarks != nullptr) {
     const unsigned num_benchmarks = number_benchmarks();
     char *arg = strtok(opt_benchmarks, ",");
     unsigned i = 0;
-    for (i = 0; arg != NULL && i < num_benchmarks; ++i) {
+    for (i = 0; arg != nullptr && i < num_benchmarks; ++i) {
       benchmark_t * benchmark = get_benchmark_name(arg);
-      if (benchmark == NULL) {
+      if (benchmark == nullptr) {
         fprintf(stderr, "Benchmark %s unknown. Skipping.\n", arg);
         --i;
       } else {
         benchmarks.push_back(benchmark);
       }
-      arg = strtok(NULL, ",");
+      arg = strtok(nullptr, ",");
     }
   } else {
     const unsigned num_benchmarks = number_benchmarks();
