@@ -79,7 +79,7 @@ class barrier {
 public:
   barrier(const unsigned count)
       : barrier_(std::make_unique<pthread_barrier_t>()) {
-    const int err = pthread_barrier_init(barrier_.get(), NULL, count);
+    const int err = pthread_barrier_init(barrier_.get(), nullptr, count);
     if (err) {
       throw std::runtime_error("Error initializing barrier: " +
                                std::to_string(err));

@@ -325,9 +325,10 @@ runner::runner(hwloc::topology *const topology, const hwloc::cpuset &cpuset,
   assert(cpuset_.size() == cpuset.size());
   /* wait for all threads to initialize */
   {
-    benchmark_t null_ops = {
-        "null", NULL, NULL, NULL, NULL, [](void *ptr) {
-                              return ptr; }, NULL};
+    benchmark_t null_ops = {"null",  nullptr, nullptr,
+                            nullptr, nullptr, [](void *ptr) {
+                              return ptr; },
+                            nullptr};
     parallel(&null_ops, 1, pmc{});
   }
 }
@@ -351,7 +352,6 @@ std::unique_ptr<benchmark_result> runner::serial(benchmark_t *ops, const unsigne
       const auto h = duration_cast<hours>(diff);
       const auto m = duration_cast<minutes>(diff - h);
       const auto s = duration_cast<seconds>(diff - h - m);
-      const auto us = diff - h - m - s;
       std::cerr << " Last took ";
       std::cerr << h.count() << ':' << m.count() << ':' << s.count();
       std::cerr << " (" << duration_cast<seconds>(diff).count() << ")";
