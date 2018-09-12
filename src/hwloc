@@ -13,7 +13,7 @@
 namespace hwloc {
 
 class bitmap {
-  hwloc_bitmap_t set_;
+  hwloc_bitmap_t set_ = nullptr;
 
   class bitmap_iterator {
     const bitmap *b_;
@@ -79,7 +79,11 @@ public:
     }
   }
 
-  ~bitmap() { hwloc_bitmap_free(set_); }
+  ~bitmap() {
+    if (set_ != nullptr) {
+      hwloc_bitmap_free(set_);
+    }
+  }
 
   bitmap(const bitmap &r) : set_(hwloc_bitmap_dup(r.set_)) {}
   bitmap(bitmap &&r) {
