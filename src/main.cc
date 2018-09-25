@@ -52,16 +52,12 @@ static uint64_t get_time() {
 #endif
 }
 
-static struct hwloc_obj_attr_u::hwloc_cache_attr_s l1_attributes(hwloc_topology_t topology) {
-  const int depth = hwloc_get_type_or_below_depth(topology, HWLOC_OBJ_PU);
-  if (depth < 0) {
-    fprintf(stderr, "Error finding PU\n");
-    exit(EXIT_FAILURE);
-  }
-  hwloc_obj_t obj =
-      hwloc_get_obj_by_depth(topology, static_cast<unsigned>(depth), 0);
+static struct hwloc_obj_attr_u::hwloc_cache_attr_s
+l1_attributes(const hwloc::topology &topology) {
+  const auto depth = topology.get_type_or_below_depth(HWLOC_OBJ_PU);
+  hwloc_obj_t obj = topology.get_obj(depth);
   /* Discover cache line size */
-  hwloc_obj_t cache = hwloc_get_cache_covering_cpuset(topology, obj->cpuset);
+  hwloc_obj_t cache = topology.get_cache_covering_cpuset(obj->cpuset);
   assert(cache != nullptr);
 #if HWLOC_API_VERSION >= 0x00020001
   assert(cache->type == HWLOC_OBJ_L1CACHE);
@@ -69,8 +65,9 @@ static struct hwloc_obj_attr_u::hwloc_cache_attr_s l1_attributes(hwloc_topology_
   assert(cache->type == HWLOC_OBJ_CACHE);
 #endif
   assert(cache->attr->cache.depth == 1);
-  fprintf(stderr, "[L1] size: %" PRIu64 ", line size: %u\n",
-          cache->attr->cache.size, cache->attr->cache.linesize);
+
+  std::cerr << "[L1] size: " << cache->attr->cache.size
+            << ", line size: " << cache->attr->cache.linesize << std::endl;
 
   return cache->attr->cache;
 }
@@ -194,7 +191,7 @@ int main(int argc, char *argv[]) {
   std::unique_ptr<hwloc::topology> topology = std::make_unique<hwloc::topology>();
   topology->load();
 
-  struct hwloc_obj_attr_u::hwloc_cache_attr_s l1 = l1_attributes(topology->get());
+  struct hwloc_obj_attr_u::hwloc_cache_attr_s l1 = l1_attributes(*topology);
 
   enum policy { PARALLEL, ONE_BY_ONE, PAIR, NR_POLICIES };
 

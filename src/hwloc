@@ -227,10 +227,10 @@ public:
     return hwloc_topology_get_topology_cpuset(topology_);
   }
 
-  depth get_type_or_below_depth(const hwloc_obj_type_t type) {
+  depth get_type_or_below_depth(const hwloc_obj_type_t type) const {
     const int depth = hwloc_get_type_or_below_depth(topology_, type);
     if (depth < 0) {
-      throw std::runtime_error("Error finding type.");
+      throw std::runtime_error("Error finding type: " + std::to_string(type));
     }
 
     return {static_cast<unsigned>(depth)};
@@ -242,6 +242,14 @@ public:
 
   hwloc_obj_t get_obj(const hwloc_obj_type_t type, const unsigned n) const {
     return hwloc_get_obj_by_type(topology_, type, n);
+  }
+
+  hwloc_obj_t get_obj(const depth &d, const unsigned idx = 0) const {
+    return hwloc_get_obj_by_depth(topology_, d.depth_, idx);
+  }
+
+  hwloc_obj_t get_cache_covering_cpuset(const cpuset &set) const {
+    return hwloc_get_cache_covering_cpuset(topology_, set.get());
   }
 
   cpuset get_cpubind() const {
