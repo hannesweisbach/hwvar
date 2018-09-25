@@ -46,6 +46,8 @@ class bitmap {
 
   struct bitmap_scanf_tag {};
 
+  hwloc_bitmap_t get() const { return set_; }
+
 public:
   using iterator = bitmap_iterator;
   using const_iterator = bitmap_iterator;
@@ -191,8 +193,6 @@ public:
   friend std::ostream &operator<<(std::ostream &os, const bitmap &b) {
     return os << b.to_string();
   }
-
-  [[deprecated]] hwloc_bitmap_t get() { return set_; }
 };
 
 using cpuset = bitmap;
