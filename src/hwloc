@@ -179,7 +179,7 @@ public:
     std::vector<char> result(static_cast<unsigned>(length + 1));
     hwloc_bitmap_snprintf(result.data(), result.size(), set_);
 
-    return std::string(result.begin(), result.end());
+    return std::string(result.begin(), std::prev(result.end()));
   }
 
   iterator begin() const { return iterator(this); }
