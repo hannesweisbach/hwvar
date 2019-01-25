@@ -209,6 +209,7 @@ int main(int argc, char *argv[]) {
   static int tune = 0;
   static int use_hyperthreads = 1;
   static int do_binding = 1;
+  static int silent = 0;
   hwloc::cpuset cpuset1;
   hwloc::cpuset cpuset2;
 
@@ -228,6 +229,7 @@ int main(int argc, char *argv[]) {
       {"no-ht", no_argument, &use_hyperthreads, 0},
       {"disable-binding", no_argument, &do_binding, 0},
       {"pmcs", required_argument, nullptr, 'm'},
+      {"nostdout", no_argument, &silent, 1},
       {nullptr, 0, nullptr, 0}};
 
   opterr = 0;
@@ -337,7 +339,8 @@ int main(int argc, char *argv[]) {
 #endif
 
 #ifndef L4
-  if (output == &file) {
+  /* do not stream results to std::cout, when silent is set */
+  if (!silent && output == &file) {
 #endif
     tee = new teestream(std::cout, file);
     output = tee;
