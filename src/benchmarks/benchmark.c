@@ -16,10 +16,11 @@
 #include "stream.h"
 #include "capacity.h"
 #include "syscall.h"
+#include "ipi.h"
 
 static benchmark_t *benchmarks[] = {
     &dgemm_ops,  &HACCmk_ops,   &SHA256,      &fwq_ops,      &hpccg_ops,
-    &minife_ops, &capacity_ops, &syscall_ops,
+    &minife_ops, &capacity_ops, &syscall_ops, &ipi_ops,
     &STREAM,     &STREAM_Scale, &STREAM_Add,  &STREAM_Triad, &STREAM_Copy};
 
 unsigned number_benchmarks() {
