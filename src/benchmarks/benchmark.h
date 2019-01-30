@@ -20,6 +20,8 @@ typedef struct {
   void (*reset_arg)(void *);
   void (*free_arg)(void *args);
   void *(*call)(void *arg);
+  void *(*extern_call)(void *arg, const unsigned cpu, uint64_t *const data,
+                       const unsigned count);
   void *state;
 } benchmark_t;
 

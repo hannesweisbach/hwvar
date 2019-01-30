@@ -351,12 +351,12 @@ static void *STREAM_call(void *arg_) {
 
 benchmark_t STREAM_Copy = {
     "STREAM_Copy",           STREAM_Init,      STREAM_argument_init,    NULL,
-    STREAM_argument_destroy, STREAM_Copy_call, (void *)&datasets[COPY],
+    STREAM_argument_destroy, STREAM_Copy_call, NULL, (void *)&datasets[COPY],
 };
 
 benchmark_t STREAM_Scale = {
     "STREAM_Scale",          STREAM_Init,       STREAM_argument_init,     NULL,
-    STREAM_argument_destroy, STREAM_Scale_call, (void *)&datasets[SCALE],
+    STREAM_argument_destroy, STREAM_Scale_call, NULL, (void *)&datasets[SCALE],
 };
 
 benchmark_t STREAM_Add = {
@@ -366,12 +366,13 @@ benchmark_t STREAM_Add = {
     NULL,
     STREAM_argument_destroy,
     STREAM_Add_call,
+    NULL,
     (void *)&datasets[ADD],
 };
 
 benchmark_t STREAM_Triad = {
     "STREAM_Triad",          STREAM_Init,       STREAM_argument_init,     NULL,
-    STREAM_argument_destroy, STREAM_Triad_call, (void *)&datasets[TRIAD],
+    STREAM_argument_destroy, STREAM_Triad_call, NULL, (void *)&datasets[TRIAD],
 };
 
 benchmark_t STREAM = {
@@ -381,6 +382,7 @@ benchmark_t STREAM = {
     NULL,
     STREAM_argument_destroy,
     STREAM_call,
+    NULL,
     (void *)&datasets[ALL],
 };
 

@@ -193,7 +193,7 @@ int main(int argc, char *argv[]) {
 
   struct hwloc_obj_attr_u::hwloc_cache_attr_s l1 = l1_attributes(*topology);
 
-  enum policy { PARALLEL, ONE_BY_ONE, PAIR, NR_POLICIES };
+  enum policy { PARALLEL, ONE_BY_ONE, PAIR, MATRIX, MATRIX_2, NR_POLICIES };
 
   enum policy policy = ONE_BY_ONE;
   char *opt_benchmarks = nullptr;
@@ -254,22 +254,26 @@ int main(int argc, char *argv[]) {
         policy = ONE_BY_ONE;
       } else if (strcmp(optarg, "pair") == 0) {
         policy = PAIR;
+      } else if (strcmp(optarg, "matrix") == 0) {
+        policy = MATRIX;
+      } else if (strcmp(optarg, "matrix2") == 0) {
+        policy = MATRIX_2;
       } else {
         fprintf(stderr, "Unkown policy: %s\n", optarg);
         exit(EXIT_FAILURE);
       }
-      break;
-    case 'b':
-      opt_benchmarks = optarg;
-      break;
-    case 'i': {
-      errno = 0;
-      unsigned long tmp = strtoul(optarg, nullptr, 0);
-      if (errno == EINVAL || errno == ERANGE || tmp > UINT_MAX) {
-        fprintf(stderr, "Could not parse --iterations argument '%s': %s\n",
-                optarg, strerror(errno));
-      }
-      iterations = static_cast<unsigned>(tmp);
+        break;
+      case 'b':
+        opt_benchmarks = optarg;
+        break;
+      case 'i': {
+        errno = 0;
+        unsigned long tmp = strtoul(optarg, nullptr, 0);
+        if (errno == EINVAL || errno == ERANGE || tmp > UINT_MAX) {
+          fprintf(stderr, "Could not parse --iterations argument '%s': %s\n",
+                  optarg, strerror(errno));
+        }
+        iterations = static_cast<unsigned>(tmp);
     } break;
     case 'l':
       list_benchmarks();
@@ -439,7 +443,7 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  assert((policy == PAIR) == static_cast<bool>(cpuset2));
+  assert((policy == PAIR || policy == MATRIX_2) == static_cast<bool>(cpuset2));
   auto runset = cpuset1 | cpuset2;
 
   runner b_runner(topology.get(), runset, use_hyperthreads, do_binding);
@@ -465,6 +469,17 @@ int main(int argc, char *argv[]) {
           cpuset2, iterations, pmcs);
       ++benchmark;
     } break;
+    case MATRIX: {
+      result = b_runner.matrix(*benchmark, iterations);
+      break;
+    }
+    case MATRIX_2: {
+      const auto next = std::next(benchmark);
+      result = b_runner.parallel_matrix(*benchmark, *next, cpuset1, cpuset2,
+                                        iterations);
+      ++benchmark;
+      break;
+    }
     case NR_POLICIES:
       exit(EXIT_FAILURE);
     }

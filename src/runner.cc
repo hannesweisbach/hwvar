@@ -17,50 +17,78 @@
 #include <benchmark.h>
 #include <mckernel.h>
 
+benchmark_result::benchmark_result(const hwloc::cpuset &cpus,
+                                   const unsigned repetitions,
+                                   const bool irreflexive,
+                                   const hwloc::cpuset &by)
+    : cpus_(std::make_unique<hwloc::cpuset>(cpus)), repetitions_(repetitions),
+      data_(cpus_->size() * repetitions_) {
+  for (const auto &from : *cpus_) {
+    for (const auto &to : *cpus_) {
+      if (irreflexive && (from == to)) {
+        continue;
+      }
+      if (!by) {
+        column_names_.push_back(std::to_string(from.second) + '-' +
+                                std::to_string(to.second));
+      } else {
+        for (const auto neighbor : by) {
+          column_names_.push_back(std::to_string(from.second) + '-' +
+                                  std::to_string(to.second) + '.' +
+                                  std::to_string(neighbor.second));
+          column_names_.push_back(std::to_string(neighbor.second) + '.' +
+                                  std::to_string(from.second) + '-' +
+                                  std::to_string(to.second));
+        }
+      }
+    }
+  }
+  slice_length_ = 1;
+  data_.resize(column_names_.size() * repetitions_);
+}
+
 benchmark_result::benchmark_result(const hwloc::cpuset &cpus, const pmc &pmcs,
                                    const unsigned repetitions)
     : cpus_(std::make_unique<hwloc::cpuset>(cpus)), pmcs_(&pmcs),
-      repetitions_(repetitions),
-      data_(cpus_->size() * pmcs_->size() * repetitions_) {}
+      repetitions_(repetitions), slice_length_(pmcs.size()),
+      data_(cpus_->size() * pmcs_->size() * repetitions_) {
+  for (const auto &cpu : *cpus_) {
+    /* timestamp is captured implicitly */
+    const auto physical = cpu.second;
+    column_names_.push_back("timestamp-c" + std::to_string(physical));
+    for (const auto &pmc : pmcs) {
+      column_names_.push_back(pmc.name() + "-c" + std::to_string(physical));
+    }
+  }
+}
 
 gsl::span<uint64_t> benchmark_result::buffer_for_thread(const unsigned i) {
   using index_type = gsl::span<uint64_t>::index_type;
   auto span = gsl::span<uint64_t>(data_);
-  return span.subspan(gsl::narrow<index_type>(i * repetitions_ * pmcs_->size()),
-                      gsl::narrow<index_type>(repetitions_ * pmcs_->size()));
+  return span.subspan(gsl::narrow<index_type>(i * repetitions_ * slice_length_),
+                      gsl::narrow<index_type>(repetitions_ * slice_length_));
 }
 
 std::ostream &operator<<(std::ostream &os, const benchmark_result &result) {
-  /* timestamp is captured implicitly */
-  os << "# timestamp\n";
-  for (const auto &cpu : *result.cpus_) {
-    const auto logical = cpu.first;
-    const auto physical = cpu.second;
-    os << std::setw(3) << physical << ' ';
-    for (unsigned rep = 0; rep < result.repetitions_; ++rep) {
-      os << std::setw(10)
-         << result.data_[logical * result.repetitions_ * result.pmcs_->size() +
-                         result.pmcs_->size() * rep]
+  /* header */
+  for (const auto &column_name : result.column_names_) {
+    os << std::setw(4) << column_name << ' ';
+  }
+  os << '\n';
+
+  const auto columns = result.column_names_.size();
+  for (unsigned rep = 0; rep < result.repetitions_; ++rep) {
+    for (unsigned col = 0; col < columns; ++col) {
+      const auto chunk_offset = col / result.slice_length_;
+      const auto chunk_idx = col % result.slice_length_;
+
+      const auto col_offset =
+          result.repetitions_ * result.slice_length_ * chunk_offset;
+      const auto rep_offset = rep * result.slice_length_;
+      os << std::setw(5) << result.data_.at(col_offset + rep_offset + chunk_idx)
          << ' ';
     }
     os << '\n';
-  }
-
-  for (const auto &pmc : *result.pmcs_) {
-    os << "# " << pmc.name() << '\n';
-    for (const auto &cpu : *result.cpus_) {
-      const auto logical = cpu.first;
-      const auto physical = cpu.second;
-      os << std::setw(3) << physical << ' ';
-      for (unsigned rep = 0; rep < result.repetitions_; ++rep) {
-        os << std::setw(10)
-           << result.data_[logical * result.repetitions_ *
-                               result.pmcs_->size() +
-                           result.pmcs_->size() * rep + (1+pmc.offset())]
-           << ' ';
-      }
-      os << '\n';
-    }
   }
 
   return os;
@@ -162,9 +190,28 @@ class runner::executor{
   std::function<void()> loop_;
   std::thread thread_;
 
-  static void run_benchmark(benchmark_t *ops, const pmc &pmcs,
-                            const unsigned reps, gsl::span<uint64_t> results,
-                            barrier &barrier) {
+public:
+  static void run_benchmark_external(benchmark_t *ops, const unsigned cpu,
+                                     const unsigned reps,
+                                     gsl::span<uint64_t> results,
+                                     barrier &barrier) {
+    auto offset = gsl::span<uint64_t>::index_type{0};
+    // set dst cpu via argument?
+
+    for (unsigned rep = 0; rep < reps; ++rep) {
+      /* todo accomodate other PMCS */
+      auto slice = results.subspan(offset, 1);
+      barrier.wait();
+      ops->extern_call(nullptr, cpu, slice.data(), slice.size());
+      offset += slice.size();
+    }
+    barrier.wait();
+  }
+
+private:
+  static void run_benchmark(benchmark_t *ops,
+                            const pmc &pmcs, const unsigned reps,
+                            gsl::span<uint64_t> results, barrier &barrier) {
     void *benchmark_arg =
         (ops->init_arg) ? ops->init_arg(ops->state) : ops->state;
 
@@ -269,6 +316,17 @@ public:
     return future;
   }
 
+  void submit_work(std::packaged_task<void()> task) {
+    std::list<std::packaged_task<void()>> tmp;
+    tmp.emplace_back(std::move(task));
+
+    {
+      std::lock_guard<std::mutex> lock(queue_lock_);
+      queue_.splice(queue_.end(), std::move(tmp));
+    }
+    cv_.notify_one();
+  }
+
   bool dirigent() const { return dirigent_; }
   void run_dirigent() { loop_(); }
 };
@@ -278,13 +336,14 @@ runner::runner(hwloc::topology *const topology, const hwloc::cpuset &cpuset,
   const hwloc_obj_type_t type =
       (include_hyperthreads) ? HWLOC_OBJ_PU : HWLOC_OBJ_CORE;
   const auto depth = topology->get_type_or_below_depth(type);
-  const unsigned num_threads = topology->get_nbobjs(depth);
+  const unsigned have_cores = topology->get_nbobjs(depth);
+  const unsigned wanted_cores = cpuset.size();
 
   std::cerr << "Spawning " << cpuset.size() << " workers: " << cpuset
             << std::endl;
 
   // iterate over all cores and pick the ones in the cpuset
-  for (unsigned pu = 0, i = 0; pu < num_threads; ++pu) {
+  for (unsigned pu = 0, i = 0; i < wanted_cores && pu < have_cores; ++pu) {
     /* TODO Awesome:
      * If no object for that type exists, NULL is returned. If there
      * are several levels with objects of that type, NULL is returned and ther
@@ -459,3 +518,114 @@ runner::parallel(benchmark_t *ops1, benchmark_t *ops2,
 
   return result;
 }
+
+std::unique_ptr<benchmark_result> runner::matrix(benchmark_t *ops,
+                                                 const unsigned reps) {
+  auto result = std::make_unique<benchmark_result>(cpuset_, reps);
+
+  barrier barrier(1);
+  for (const auto &from : cpuset_) {
+    for (const auto &to : cpuset_) {
+      std::cerr << "\rRunning " << from.first << " to " << to.first << '.'
+                << std::flush;
+      const auto thread_idx = from.first;
+      const auto index = cpuset_.size() * from.first + to.first;
+      const auto cpu_idx = from.second;
+      const auto &executor = threads_.at(thread_idx);
+      const auto target = to.second;
+
+      std::packaged_task<void()> task(
+          [ops, cpu_idx, target, reps, results = result->buffer_for_thread(index),
+           &barrier] {
+            executor::run_benchmark_external(ops, target, reps, results,
+                                             barrier);
+          });
+      auto future = task.get_future();
+      executor->submit_work(std::move(task));
+
+      if (executor->dirigent()) { // run dirigent
+        assert(thread_idx == 0);
+        executor->run_dirigent();
+      }
+      future.get();
+    }
+  }
+
+  return result;
+}
+
+std::unique_ptr<benchmark_result>
+runner::parallel_matrix(benchmark_t *ops1, benchmark_t *ops2,
+                        const hwloc::bitmap &cpuset1,
+                        const hwloc::cpuset &cpuset2, const unsigned reps) {
+  {
+    assert(!cpuset1.intersects(cpuset2));
+
+    hwloc::bitmap cpuset = cpuset1 | cpuset2;
+    cpuset &= cpuset_;
+    assert(cpuset.isincluded(cpuset_));
+  }
+
+  const auto size = 2; //cpuset.size();
+  assert(size > 0);
+  auto result =
+      std::make_unique<benchmark_result>(cpuset1, reps, true, cpuset2);
+
+  for (const auto &from : cpuset1) {
+    for (const auto &to : cpuset1) {
+      if (from == to) {
+        continue;
+      }
+      for (const auto &by : cpuset2) {
+        const auto index = from.first * cpuset1.size() * cpuset2.size() * 2 +
+                           (to.first - 1) * cpuset2.size() * 2 + by.first * 2;
+        const auto target = to.second;
+
+        std::cout << "IPI " << from.second << "->" << to.second << "/"
+                  << by.second << " " << index << std::endl;
+
+        std::vector<std::future<void>> futures;
+        futures.reserve(size);
+        barrier barrier(size);
+
+        {
+          const auto thread_idx = from.second;
+          const auto &executor = threads_.at(thread_idx);
+          std::packaged_task<void()> task(
+              [ops1, target, reps, results = result->buffer_for_thread(index),
+               &barrier] {
+                executor::run_benchmark_external(ops1, target, reps, results,
+                                                 barrier);
+              });
+          auto future = task.get_future();
+          executor->submit_work(std::move(task));
+          futures.push_back(std::move(future));
+        }
+        {
+          const auto thread_idx = by.second;
+          const auto &executor = threads_.at(thread_idx);
+          auto future = executor->submit_work(
+              ops2, {}, reps, result->buffer_for_thread(index + 1), barrier);
+          futures.push_back(std::move(future));
+        }
+
+        // run dirigent only if required; else deadlock.
+        if (from.second == 0 || by.second == 0) {
+          for (auto &&thread : threads_) {
+            if (thread->dirigent()) {
+              thread->run_dirigent();
+              break;
+            }
+          }
+        }
+        // wait for all workers to finish
+        for (auto &&future : futures) {
+          future.get();
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
